@@ -63,7 +63,16 @@ onMounted(() => {
       spellcheck="false"
       placeholder="Paste JSON payload here..."
     ></textarea>
-    <div v-if="state.jsonError" class="json-error">{{ "JSON Syntax Error: " + state.jsonError }}</div>
+    <div v-if="state.jsonError" class="json-error">
+      <div class="err-title">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        JSON Syntax Error
+        <span v-if="state.jsonParseResult?.stagesRun?.length" class="stages-badge">
+          Auto-fixed: {{ state.jsonParseResult.stagesRun.join(', ') }}
+        </span>
+      </div>
+      <pre class="err-body">{{ state.jsonError }}</pre>
+    </div>
   </section>
 </template>
 
@@ -114,15 +123,47 @@ onMounted(() => {
 }
 
 .json-error {
-  background: rgba(255, 123, 114, 0.1);
-  color: var(--red);
-  border-top: 1px solid var(--red);
-  padding: 12px 16px;
+  background: rgba(255, 123, 114, 0.08);
+  border-top: 1px solid rgba(255, 123, 114, 0.4);
   font-family: var(--font-mono);
   font-size: 12px;
-  white-space: pre-wrap;
-  max-height: 120px;
-  overflow-y: auto;
   user-select: text;
+  flex-shrink: 0;
 }
+
+.err-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px 8px;
+  color: var(--red);
+  font-weight: 600;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  border-bottom: 1px solid rgba(255,123,114,0.2);
+}
+
+.stages-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(126, 231, 135, 0.1);
+  border: 1px solid var(--green);
+  color: var(--green);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+}
+
+.err-body {
+  margin: 0;
+  padding: 10px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--red);
+  max-height: 150px;
+  overflow-y: auto;
+  opacity: 0.9;
+}
+
 </style>

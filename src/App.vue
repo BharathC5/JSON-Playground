@@ -1,122 +1,194 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useWorkbench } from './composables/useWorkbench'
 import Topbar from './components/Topbar.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import JsonInputPanel from './components/JsonInputPanel.vue'
 import VisualizerPanel from './components/VisualizerPanel.vue'
-import ConsolePanel from './components/ConsolePanel.vue'
 import { toastMessage, toastVisible } from './composables/useToast'
 
-const { loadLayout, saveLayout } = useWorkbench()
+const { state, loadLayout, saveLayout, toggleInputPanel } = useWorkbench()
 
-const jsonWidth = ref(45) // percentage
-const consoleHeight = ref(240) // px
+// ─── Layout State ─────────────────────────────────────────────────────────────
+const jsonWidth = ref(42)   // percentage – only used in split mode
+const workspaceEl = ref(null)
+const isSettingsOpen = ref(false)
 
-const workspaceLayout = ref(null)
-
-let isDraggingV = false
-let isDraggingH = false
+// Splitter drag
+let isDragging = false
+let dragStartX = 0
+let dragStartW = 0
 
 onMounted(() => {
   const saved = loadLayout()
-  if (saved) {
-    if (saved.jsonWidth) jsonWidth.value = saved.jsonWidth
-    if (saved.consoleHeight) consoleHeight.value = saved.consoleHeight
-  }
-  
-  window.addEventListener('mousemove', handleMouseMove)
-  window.addEventListener('mouseup', handleMouseUp)
+  if (saved?.jsonWidth) jsonWidth.value = saved.jsonWidth
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('mousemove', handleMouseMove)
-  window.removeEventListener('mouseup', handleMouseUp)
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onMouseUp)
 })
 
-const startDragV = (e) => {
+const startDrag = (e) => {
   e.preventDefault()
-  isDraggingV = true
+  isDragging = true
+  dragStartX = e.clientX
+  dragStartW = jsonWidth.value
   document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
 }
 
-const startDragH = (e) => {
-  e.preventDefault()
-  isDraggingH = true
-  document.body.style.cursor = 'row-resize'
+const onMouseMove = (e) => {
+  if (!isDragging || !workspaceEl.value) return
+  const rect = workspaceEl.value.getBoundingClientRect()
+  const delta = e.clientX - dragStartX
+  const pct = (delta / rect.width) * 100
+  jsonWidth.value = Math.max(15, Math.min(dragStartW + pct, 75))
 }
 
-const handleMouseMove = (e) => {
-  if (isDraggingV && workspaceLayout.value) {
-    const layoutRect = workspaceLayout.value.getBoundingClientRect()
-    let newWidth = ((e.clientX - layoutRect.left) / layoutRect.width) * 100
-    newWidth = Math.max(10, Math.min(newWidth, 90))
-    jsonWidth.value = newWidth
-  } else if (isDraggingH) {
-    const newHeight = Math.max(70, Math.min(window.innerHeight - e.clientY, window.innerHeight - 150))
-    consoleHeight.value = newHeight
-  }
-}
-
-const handleMouseUp = () => {
-  if (isDraggingV || isDraggingH) {
-    isDraggingV = false
-    isDraggingH = false
+const onMouseUp = () => {
+  if (isDragging) {
+    isDragging = false
     document.body.style.cursor = ''
-    saveLayout({ jsonWidth: jsonWidth.value, consoleHeight: consoleHeight.value })
+    document.body.style.userSelect = ''
+    saveLayout({ jsonWidth: jsonWidth.value })
   }
 }
 
-const isSettingsOpen = ref(false)
+const onResetLayout = () => {
+  jsonWidth.value = 42
+  saveLayout(null)
+}
+
+// ─── Computed styles ──────────────────────────────────────────────────────────
+const isSplit = computed(() => state.settings.layoutMode === 'split')
+const isTabMode = computed(() => state.settings.layoutMode === 'tab')
+
+const inputPanelStyle = computed(() => {
+  if (!isSplit.value) return {}
+  if (!state.inputPanelVisible) return { width: '0px', overflow: 'hidden', minWidth: '0' }
+  return { width: `${jsonWidth.value}%` }
+})
+
+const showGutter = computed(() => isSplit.value && state.inputPanelVisible)
 </script>
 
 <template>
-  <Topbar @open-settings="isSettingsOpen = true" />
-
-  <main class="workspace-layout" ref="workspaceLayout">
-    <JsonInputPanel :style="{ width: `${jsonWidth}%` }" />
-
-    <div
-      class="gutter gutter-vertical"
-      :class="{ 'is-dragging': isDraggingV }"
-      @mousedown="startDragV"
-      title="Drag to resize panels"
-    ></div>
-
-    <VisualizerPanel class="panel-explorer" />
-  </main>
-
-  <div
-    class="gutter gutter-horizontal"
-    :class="{ 'is-dragging': isDraggingH }"
-    @mousedown="startDragH"
-    title="Drag to resize console"
-  ></div>
-
-  <ConsolePanel :style="{ height: `${consoleHeight}px` }" />
-
-  <SettingsModal 
-    v-if="isSettingsOpen" 
-    @close="isSettingsOpen = false" 
-    @reset-layout="jsonWidth = 45; consoleHeight = 240; saveLayout(null)" 
+  <Topbar
+    @open-settings="isSettingsOpen = true"
+    @toggle-input="toggleInputPanel"
+    :input-visible="state.inputPanelVisible"
+    :layout-mode="state.settings.layoutMode"
   />
 
-  <div v-if="toastVisible" class="toast">{{ toastMessage }}</div>
+  <!-- ─── TAB MODE ─────────────────────────────────────── -->
+  <div v-if="isTabMode" class="tab-mode-layout">
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+      <button
+        class="tab-btn"
+        :class="{ active: state.currentView === '__input' }"
+        @click="state.currentView = '__input'"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        JSON Input
+      </button>
+      <button
+        class="tab-btn"
+        :class="{ active: state.currentView === 'tree' }"
+        @click="state.currentView = 'tree'"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 3h18"/><path d="M3 9h18"/><path d="M3 15h14"/><path d="M3 21h10"/></svg>
+        Tree
+      </button>
+      <button
+        class="tab-btn"
+        :class="{ active: state.currentView === 'flow' }"
+        @click="state.currentView = 'flow'"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><line x1="7" y1="12" x2="17" y2="6.5"/><line x1="7" y1="12" x2="17" y2="17.5"/></svg>
+        Flowchart
+      </button>
+      <button
+        class="tab-btn"
+        :class="{ active: state.currentView === 'console' }"
+        @click="state.currentView = 'console'"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        Console
+      </button>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+      <JsonInputPanel v-show="state.currentView === '__input'" class="tab-panel-fill" />
+      <VisualizerPanel v-show="state.currentView !== '__input'" class="tab-panel-fill" />
+    </div>
+  </div>
+
+  <!-- ─── SPLIT MODE ───────────────────────────────────── -->
+  <main v-else class="workspace-layout" ref="workspaceEl">
+    <transition name="panel-slide">
+      <JsonInputPanel v-show="state.inputPanelVisible" :style="inputPanelStyle" class="input-panel" />
+    </transition>
+
+    <div
+      v-if="showGutter"
+      class="gutter gutter-vertical"
+      :class="{ 'is-dragging': isDragging }"
+      @mousedown="startDrag"
+      title="Drag to resize — double-click to toggle panel"
+      @dblclick="toggleInputPanel"
+    ></div>
+
+    <!-- Collapsed indicator when panel hidden in split mode -->
+    <button
+      v-if="!state.inputPanelVisible && isSplit"
+      class="panel-collapsed-btn"
+      @click="toggleInputPanel"
+      title="Show JSON Input"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </button>
+
+    <VisualizerPanel class="explorer-panel" />
+  </main>
+
+  <!-- ─── Settings Modal ───────────────────────────────── -->
+  <SettingsModal
+    v-if="isSettingsOpen"
+    @close="isSettingsOpen = false"
+    @reset-layout="onResetLayout"
+  />
+
+  <!-- ─── Toast ────────────────────────────────────────── -->
+  <transition name="toast-anim">
+    <div v-if="toastVisible" class="toast">{{ toastMessage }}</div>
+  </transition>
 </template>
 
 <style scoped>
+/* ─── SPLIT MODE ─────────────────────────────────────────────────────────── */
 .workspace-layout {
   display: flex;
   flex-direction: row;
   flex: 1 1 auto;
   min-height: 0;
-  position: relative;
   overflow: hidden;
 }
 
-.panel-explorer {
+.input-panel {
+  flex-shrink: 0;
+  min-width: 0;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.explorer-panel {
   flex: 1 1 auto;
   min-width: 200px;
+  overflow: hidden;
 }
 
 .gutter {
@@ -124,11 +196,7 @@ const isSettingsOpen = ref(false)
   z-index: 10;
   position: relative;
   transition: background-color 0.15s ease;
-}
-
-.gutter:hover,
-.gutter.is-dragging {
-  background: var(--accent);
+  flex-shrink: 0;
 }
 
 .gutter-vertical {
@@ -138,10 +206,105 @@ const isSettingsOpen = ref(false)
   border-right: 1px solid var(--border);
 }
 
-.gutter-horizontal {
-  height: var(--gutter-size);
-  cursor: row-resize;
-  border-top: 1px solid var(--border);
+.gutter-vertical:hover,
+.gutter-vertical.is-dragging {
+  background: var(--accent);
+}
+
+.panel-collapsed-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.panel-collapsed-btn:hover {
+  color: var(--accent);
+  background: var(--bg-panel-alt);
+}
+
+.panel-slide-enter-active, .panel-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.25s ease;
+}
+.panel-slide-enter-from, .panel-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+/* ─── TAB MODE ───────────────────────────────────────────────────────────── */
+.tab-mode-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px;
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.tab-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-panel-fill {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Toast ──────────────────────────────────────────────────────────────── */
+.toast-anim-enter-active { animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.toast-anim-leave-active { animation: toastIn 0.2s ease reverse forwards; }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 </style>

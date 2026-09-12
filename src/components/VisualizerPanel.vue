@@ -5,6 +5,7 @@ import { getType, pathToJs, pathToBreadcrumb, shortPreview } from '../utils/json
 import { copyToClipboard } from '../composables/useToast'
 import TreeNode from './TreeNode.vue'
 import Flowchart from './Flowchart.vue'
+import ConsolePanel from './ConsolePanel.vue'
 
 const { state } = useWorkbench()
 
@@ -132,6 +133,13 @@ const closeSearch = () => {
         >
           Flowchart
         </button>
+        <button
+          class="view-toggle-btn"
+          :class="{ active: state.currentView === 'console' }"
+          @click="setView('console')"
+        >
+          Console
+        </button>
       </div>
     </div>
     
@@ -175,6 +183,9 @@ const closeSearch = () => {
         </div>
         <div v-show="state.currentView === 'flow'" class="flow-container-wrap">
           <Flowchart @inspect="onInspect" />
+        </div>
+        <div v-show="state.currentView === 'console'" style="display: flex; flex-direction: column; flex: 1; height: 100%;">
+          <ConsolePanel style="flex: 1;" />
         </div>
       </template>
     </div>
