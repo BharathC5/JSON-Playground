@@ -112,6 +112,28 @@ const onResetLayout = () => {
           </label>
         </div>
 
+        <!-- ── About & Author ─────────────────────── -->
+        <div class="setting-section">
+          <div class="section-heading">About</div>
+          
+          <div class="about-row">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span class="about-label">Email:</span>
+            <a href="mailto:bharathchandru5459@gmail.com" class="about-link">bharathchandru5459@gmail.com</a>
+          </div>
+
+          <div class="about-row">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            <span class="about-label">GitHub:</span>
+            <a href="https://github.com/BharathC5/JSON-Playground" target="_blank" class="about-link">BharathC5/JSON-Playground</a>
+          </div>
+
+          <button class="btn-small btn-donate" disabled title="Coming Soon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            Support this project
+          </button>
+        </div>
+
         <!-- ── Danger Zone ────────────────────────── -->
         <div class="setting-section danger-zone">
           <div class="section-heading">Layout</div>
@@ -372,6 +394,38 @@ const onResetLayout = () => {
   padding: 1px 5px;
   color: var(--text-faint);
   margin-left: auto;
+}
+
+/* ─── About section ─── */
+.about-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.about-label {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+.about-link:hover {
+  text-decoration: underline;
+}
+
+.btn-donate {
+  margin-top: 4px;
+  justify-content: center;
+  background: rgba(255, 109, 0, 0.1);
+  border-color: rgba(255, 109, 0, 0.3);
+  color: #ff6d00;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ─── Danger zone ─── */

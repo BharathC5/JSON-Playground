@@ -79,7 +79,7 @@ const closeSearch = () => {
 <template>
   <section class="panel panel-explorer" @click="closeSearch">
     <!-- ─── Header ─────────────────────────────────────────────── -->
-    <div class="panel-header">
+    <div v-if="state.settings.layoutMode !== 'tab'" class="panel-header">
       <span>EXPLORER &amp; VISUALIZER</span>
       <div class="view-toggle">
         <button class="view-toggle-btn" :class="{ active: state.currentView === 'tree' }" @click="setView('tree')">Tree</button>
