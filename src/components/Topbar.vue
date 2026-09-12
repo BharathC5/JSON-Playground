@@ -38,21 +38,33 @@ const showToggleBtn = computed(() => props.layoutMode === 'split')
 <template>
   <header class="topbar">
     <div class="topbar-left">
-      <div class="logo-mark">
-        <svg width="22" height="22" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <div class="logo-lockup">
+        <!-- Left brace -->
+        <svg class="brace" width="18" height="26" viewBox="0 0 210 500" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="tbg" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#f83600" />
-              <stop offset="100%" stop-color="#f9d423" />
+            <linearGradient id="lg-left" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff3d00"/>
+              <stop offset="45%" stop-color="#ff6d00"/>
+              <stop offset="100%" stop-color="#ffd180"/>
             </linearGradient>
           </defs>
-          <path d="M 85 45 Q 60 45, 60 70 L 60 85 Q 60 100, 40 100 Q 60 100, 60 115 L 60 130 Q 60 155, 85 155"
-            fill="none" stroke="url(#tbg)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M 115 45 Q 140 45, 140 70 L 140 85 Q 140 100, 160 100 Q 140 100, 140 115 L 140 130 Q 140 155, 115 155"
-            fill="none" stroke="url(#tbg)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M 185 30 Q 105 30, 96 95 L 88 175 Q 80 225, 36 238 Q 8 246, 8 265 Q 8 284, 36 292 Q 80 305, 88 355 L 96 435 Q 105 500, 185 500" fill="none" stroke="url(#lg-left)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+
+        <h1>JSON-PlayGround</h1>
+
+        <!-- Right brace -->
+        <svg class="brace" width="18" height="26" viewBox="0 0 210 500" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="lg-right" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff3d00"/>
+              <stop offset="45%" stop-color="#ff6d00"/>
+              <stop offset="100%" stop-color="#ffd180"/>
+            </linearGradient>
+          </defs>
+          <path d="M 25 30 Q 105 30, 114 95 L 122 175 Q 130 225, 174 238 Q 202 246, 202 265 Q 202 284, 174 292 Q 130 305, 122 355 L 114 435 Q 105 500, 25 500" fill="none" stroke="url(#lg-right)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
-      <h1>JSON-PlayGround</h1>
     </div>
 
     <div class="topbar-actions">
@@ -121,23 +133,30 @@ const showToggleBtn = computed(() => props.layoutMode === 'split')
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
 }
 
-.logo-mark {
+.logo-lockup {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.brace {
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 5px rgba(255, 90, 0, 0.5));
 }
 
 .topbar h1 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   margin: 0;
-  background: linear-gradient(90deg, #fff 60%, #f9d423);
+  background: linear-gradient(90deg, #ffffff 0%, #ffe0b2 60%, #ffd180 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: 0.3px;
+  white-space: nowrap;
+  text-shadow: none;
 }
 
 .topbar-actions {

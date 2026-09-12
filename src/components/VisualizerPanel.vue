@@ -16,36 +16,13 @@ const showSearchResults = ref(false)
 const breadcrumbPathArr = ref([])
 const breadcrumbJs = ref('')
 const showBreadcrumb = ref(false)
+const breadcrumbCollapsed = ref(false)
 
 const setView = (view) => {
   state.currentView = view
 }
 
-const breadcrumbHeight = ref(140)
-let isDraggingBreadcrumb = false
-
-const startDragBreadcrumb = (e) => {
-  e.preventDefault()
-  isDraggingBreadcrumb = true
-  document.body.style.cursor = 'row-resize'
-  window.addEventListener('mousemove', onDragBreadcrumb)
-  window.addEventListener('mouseup', stopDragBreadcrumb)
-}
-
-const onDragBreadcrumb = (e) => {
-  if (isDraggingBreadcrumb) {
-    const newHeight = Math.max(80, Math.min(window.innerHeight - e.clientY - 250, 400))
-    breadcrumbHeight.value = newHeight
-  }
-}
-
-const stopDragBreadcrumb = () => {
-  isDraggingBreadcrumb = false
-  document.body.style.cursor = ''
-  window.removeEventListener('mousemove', onDragBreadcrumb)
-  window.removeEventListener('mouseup', stopDragBreadcrumb)
-}
-
+// ─── Search ───────────────────────────────────────────────────────────────────
 const onSearchInput = () => {
   const q = searchQuery.value.trim()
   if (!state.parsedData || !q) {
@@ -53,10 +30,8 @@ const onSearchInput = () => {
     searchResults.value = []
     return
   }
-  
   const results = []
   const lowerQ = q.toLowerCase()
-
   function walk(value, pathArr, key) {
     if (results.length >= 100) return
     if (key !== null) {
@@ -71,13 +46,9 @@ const onSearchInput = () => {
       }
     }
     const t = getType(value)
-    if (t === 'array') {
-      value.forEach((v, i) => walk(v, [...pathArr, i], i))
-    } else if (t === 'object' && value !== null) {
-      Object.keys(value).forEach((k) => walk(value[k], [...pathArr, k], k))
-    }
+    if (t === 'array') value.forEach((v, i) => walk(v, [...pathArr, i], i))
+    else if (t === 'object' && value !== null) Object.keys(value).forEach((k) => walk(value[k], [...pathArr, k], k))
   }
-
   walk(state.parsedData, [], null)
   searchResults.value = results
   showSearchResults.value = true
@@ -87,10 +58,7 @@ const onInspect = ({ pathArr, js }) => {
   breadcrumbPathArr.value = pathArr
   breadcrumbJs.value = js
   showBreadcrumb.value = true
-  
-  // Update console input value globally if needed
-  // For now, we just update the breadcrumb
-  // We can use an event bus or simple global state for console input
+  breadcrumbCollapsed.value = false
   state.consoleInputDraft = js
 }
 
@@ -99,50 +67,28 @@ const onResultClick = (result) => {
   showSearchResults.value = false
 }
 
-const getBreadcrumbText = computed(() => {
-  return pathToBreadcrumb(breadcrumbPathArr.value)
-})
+const getBreadcrumbText = computed(() => pathToBreadcrumb(breadcrumbPathArr.value))
 
-const onBreadcrumbCopy = () => {
-  copyToClipboard(breadcrumbJs.value)
-}
+const onBreadcrumbCopy = () => copyToClipboard(breadcrumbJs.value)
 
 const closeSearch = () => {
-  setTimeout(() => {
-    showSearchResults.value = false
-  }, 200)
+  setTimeout(() => { showSearchResults.value = false }, 200)
 }
 </script>
 
 <template>
   <section class="panel panel-explorer" @click="closeSearch">
+    <!-- ─── Header ─────────────────────────────────────────────── -->
     <div class="panel-header">
       <span>EXPLORER &amp; VISUALIZER</span>
       <div class="view-toggle">
-        <button
-          class="view-toggle-btn"
-          :class="{ active: state.currentView === 'tree' }"
-          @click="setView('tree')"
-        >
-          Tree
-        </button>
-        <button
-          class="view-toggle-btn"
-          :class="{ active: state.currentView === 'flow' }"
-          @click="setView('flow')"
-        >
-          Flowchart
-        </button>
-        <button
-          class="view-toggle-btn"
-          :class="{ active: state.currentView === 'console' }"
-          @click="setView('console')"
-        >
-          Console
-        </button>
+        <button class="view-toggle-btn" :class="{ active: state.currentView === 'tree' }" @click="setView('tree')">Tree</button>
+        <button class="view-toggle-btn" :class="{ active: state.currentView === 'flow' }" @click="setView('flow')">Flowchart</button>
+        <button class="view-toggle-btn" :class="{ active: state.currentView === 'console' }" @click="setView('console')">Console</button>
       </div>
     </div>
-    
+
+    <!-- ─── Search ─────────────────────────────────────────────── -->
     <div class="explorer-search">
       <input
         v-model="searchQuery"
@@ -167,6 +113,7 @@ const closeSearch = () => {
       </div>
     </div>
 
+    <!-- ─── Visualizer ─────────────────────────────────────────── -->
     <div class="visualizer-container">
       <div v-if="!state.parsedData" class="tree-empty">
         {{ state.jsonError ? 'Fix the JSON error on the left to activate visualizer.' : 'Paste valid JSON on the left to explore properties.' }}
@@ -184,30 +131,49 @@ const closeSearch = () => {
         <div v-show="state.currentView === 'flow'" class="flow-container-wrap">
           <Flowchart @inspect="onInspect" />
         </div>
-        <div v-show="state.currentView === 'console'" style="display: flex; flex-direction: column; flex: 1; height: 100%;">
-          <ConsolePanel style="flex: 1;" />
+        <div v-show="state.currentView === 'console'" class="console-container">
+          <ConsolePanel />
         </div>
       </template>
     </div>
 
-    <div
-      v-if="showBreadcrumb && state.parsedData"
-      class="gutter gutter-horizontal"
-      :class="{ 'is-dragging': isDraggingBreadcrumb }"
-      @mousedown="startDragBreadcrumb"
-      title="Drag to resize inspected target"
-    ></div>
+    <!-- ─── Inspected Target ───────────────────────────────────── -->
+    <template v-if="showBreadcrumb && state.parsedData">
+      <!-- Toggle bar — always visible when something is inspected -->
+      <div class="breadcrumb-toggle-bar" @click="breadcrumbCollapsed = !breadcrumbCollapsed">
+        <div class="btb-left">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span class="btb-label">INSPECTED TARGET</span>
+          <code class="btb-preview">{{ breadcrumbJs }}</code>
+        </div>
+        <div class="btb-right">
+          <button class="btb-btn" @click.stop="onBreadcrumbCopy" title="Copy JS path">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+          <button class="btb-btn" @click.stop="showBreadcrumb = false" title="Dismiss">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <!-- Chevron -->
+          <svg class="btb-chevron" :class="{ flipped: !breadcrumbCollapsed }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+        </div>
+      </div>
 
-    <div v-if="showBreadcrumb && state.parsedData" class="breadcrumb" :style="{ height: `${breadcrumbHeight}px`, maxHeight: 'none' }">
-      <div class="breadcrumb-header">
-        <span class="breadcrumb-label">INSPECTED TARGET:</span>
-        <button @click="onBreadcrumbCopy" class="btn-small">Copy Path</button>
-      </div>
-      <div class="breadcrumb-path">{{ getBreadcrumbText }}</div>
-      <div class="breadcrumb-js-row">
-        <code>{{ breadcrumbJs }}</code>
-      </div>
-    </div>
+      <!-- Expandable body -->
+      <transition name="slide-down">
+        <div v-if="!breadcrumbCollapsed" class="breadcrumb-body">
+          <div class="breadcrumb-path">{{ getBreadcrumbText }}</div>
+          <code class="breadcrumb-js">{{ breadcrumbJs }}</code>
+        </div>
+      </transition>
+    </template>
   </section>
 </template>
 
@@ -262,6 +228,7 @@ const closeSearch = () => {
   color: #fff;
 }
 
+/* ─── Search ──────────────────────────────────────────────────────────────── */
 .explorer-search {
   position: relative;
   padding: 10px 16px;
@@ -282,9 +249,7 @@ const closeSearch = () => {
   transition: border-color 0.2s;
 }
 
-.explorer-search input:focus {
-  border-color: var(--accent);
-}
+.explorer-search input:focus { border-color: var(--accent); }
 
 .search-results {
   position: absolute;
@@ -319,38 +284,35 @@ const closeSearch = () => {
   cursor: pointer;
 }
 
-.search-result-row:hover {
-  background: #353b45;
-}
-.search-result-path {
-  color: var(--accent);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.search-result-value {
-  color: var(--text-faint);
-  margin-left: 12px;
-}
+.search-result-row:hover { background: #353b45; }
+.search-result-path { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-result-value { color: var(--text-faint); margin-left: 12px; }
 
+/* ─── Visualizer ──────────────────────────────────────────────────────────── */
 .visualizer-container {
   flex: 1 1 auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.tree-container, .flow-container-wrap {
-  flex: 1 1 auto;
-  overflow: auto;
+  min-height: 0;
 }
 
 .tree-container {
+  flex: 1 1 auto;
+  overflow: auto;
   padding: 16px;
 }
 
 .flow-container-wrap {
-  /* Background moved to Flowchart.vue viewport */
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.console-container {
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .tree-empty {
@@ -360,64 +322,128 @@ const closeSearch = () => {
   text-align: center;
 }
 
-.breadcrumb {
-  padding: 12px 16px;
-  background: var(--bg-panel);
-  flex-shrink: 0;
-  overflow-y: auto;
-}
+/* ─── Inspected Target ────────────────────────────────────────────────────── */
 
-.gutter {
-  background: var(--bg-panel);
-  z-index: 10;
-  position: relative;
-  transition: background-color 0.15s ease;
-}
-
-.gutter:hover,
-.gutter.is-dragging {
-  background: var(--accent);
-}
-
-.gutter-horizontal {
-  height: var(--gutter-size);
-  cursor: row-resize;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-
-.breadcrumb-header {
+/* The always-visible toggle bar */
+.breadcrumb-toggle-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  padding: 0 12px;
+  height: 36px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  user-select: none;
 }
 
-.breadcrumb-label {
-  color: var(--text-faint);
-  font-size: 10px;
+.breadcrumb-toggle-bar:hover { background: var(--bg-panel-alt); }
+
+.btb-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.btb-label {
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btb-preview {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.btb-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.btb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btb-btn:hover { background: rgba(255,255,255,0.07); color: #fff; }
+
+.btb-chevron {
+  color: var(--text-faint);
+  transition: transform 0.2s ease;
+  margin-left: 2px;
+}
+
+.btb-chevron.flipped { transform: rotate(180deg); }
+
+/* The collapsible body */
+.breadcrumb-body {
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .breadcrumb-path {
   font-family: var(--font-mono);
   color: var(--text-dim);
   font-size: 11px;
-  white-space: pre;
-  line-height: 1.4;
+  white-space: pre-wrap;
+  line-height: 1.5;
 }
 
-.breadcrumb-js-row code {
+.breadcrumb-js {
+  display: block;
   font-family: var(--font-mono);
   color: var(--accent);
   background: var(--bg);
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px 10px;
+  border-radius: 5px;
   font-size: 11px;
-  display: block;
   overflow-x: auto;
-  margin-top: 8px;
+  white-space: nowrap;
   border: 1px solid var(--border);
+  user-select: text;
+  cursor: text;
+}
+
+/* Slide animation */
+.slide-down-enter-active { animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-down-leave-active { animation: slideDown 0.15s ease reverse; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 </style>
