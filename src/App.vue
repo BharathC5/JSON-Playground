@@ -83,77 +83,69 @@ const showGutter = computed(() => isSplit.value && state.inputPanelVisible)
     :layout-mode="state.settings.layoutMode"
   />
 
-  <!-- ─── TAB MODE ─────────────────────────────────────── -->
-  <div v-if="isTabMode" class="tab-mode-layout">
-    <!-- Tab Bar -->
-    <div class="tab-bar">
-      <button
-        class="tab-btn"
-        :class="{ active: state.currentView === '__input' }"
-        @click="state.currentView = '__input'"
-      >
+  <!-- ─── APP BODY ─────────────────────────────────────── -->
+  <main class="app-body" :class="{ 'is-tab-mode': isTabMode, 'is-split-mode': isSplit }">
+    <!-- Tab Bar (Tab Mode Only) -->
+    <div v-if="isTabMode" class="tab-bar">
+      <button class="tab-btn" :class="{ active: state.currentView === '__input' }" @click="state.currentView = '__input'">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         JSON Input
       </button>
-      <button
-        class="tab-btn"
-        :class="{ active: state.currentView === 'tree' }"
-        @click="state.currentView = 'tree'"
-      >
+      <button class="tab-btn" :class="{ active: state.currentView === 'tree' }" @click="state.currentView = 'tree'">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 3h18"/><path d="M3 9h18"/><path d="M3 15h14"/><path d="M3 21h10"/></svg>
         Tree
       </button>
-      <button
-        class="tab-btn"
-        :class="{ active: state.currentView === 'flow' }"
-        @click="state.currentView = 'flow'"
-      >
+      <button class="tab-btn" :class="{ active: state.currentView === 'flow' }" @click="state.currentView = 'flow'">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><line x1="7" y1="12" x2="17" y2="6.5"/><line x1="7" y1="12" x2="17" y2="17.5"/></svg>
         Flowchart
       </button>
-      <button
-        class="tab-btn"
-        :class="{ active: state.currentView === 'console' }"
-        @click="state.currentView = 'console'"
-      >
+      <button class="tab-btn" :class="{ active: state.currentView === 'console' }" @click="state.currentView = 'console'">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         Console
       </button>
     </div>
 
-    <!-- Tab Content -->
-    <div class="tab-content">
-      <JsonInputPanel v-show="state.currentView === '__input'" class="tab-panel-fill" />
-      <VisualizerPanel v-show="state.currentView !== '__input'" class="tab-panel-fill" />
+    <!-- Content Area (Split mode row, or Tab mode active panel) -->
+    <div class="content-area" ref="workspaceEl">
+      
+      <!-- JSON Input -->
+      <transition name="panel-slide">
+        <JsonInputPanel 
+          v-show="(isSplit && state.inputPanelVisible) || (isTabMode && state.currentView === '__input')"
+          :style="isSplit ? inputPanelStyle : null" 
+          class="input-panel"
+          :class="{ 'tab-panel-fill': isTabMode }"
+        />
+      </transition>
+
+      <!-- Splitter (Split Mode Only) -->
+      <div
+        v-if="showGutter"
+        class="gutter gutter-vertical"
+        :class="{ 'is-dragging': isDragging }"
+        @mousedown="startDrag"
+        title="Drag to resize — double-click to toggle panel"
+        @dblclick="toggleInputPanel"
+      ></div>
+
+      <!-- Collapsed indicator (Split Mode Only) -->
+      <button
+        v-if="!state.inputPanelVisible && isSplit"
+        class="panel-collapsed-btn"
+        @click="toggleInputPanel"
+        title="Show JSON Input"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      </button>
+
+      <!-- Visualizer -->
+      <VisualizerPanel 
+        v-show="isSplit || (isTabMode && state.currentView !== '__input')"
+        class="explorer-panel"
+        :class="{ 'tab-panel-fill': isTabMode }"
+      />
+      
     </div>
-  </div>
-
-  <!-- ─── SPLIT MODE ───────────────────────────────────── -->
-  <main v-else class="workspace-layout" ref="workspaceEl">
-    <transition name="panel-slide">
-      <JsonInputPanel v-show="state.inputPanelVisible" :style="inputPanelStyle" class="input-panel" />
-    </transition>
-
-    <div
-      v-if="showGutter"
-      class="gutter gutter-vertical"
-      :class="{ 'is-dragging': isDragging }"
-      @mousedown="startDrag"
-      title="Drag to resize — double-click to toggle panel"
-      @dblclick="toggleInputPanel"
-    ></div>
-
-    <!-- Collapsed indicator when panel hidden in split mode -->
-    <button
-      v-if="!state.inputPanelVisible && isSplit"
-      class="panel-collapsed-btn"
-      @click="toggleInputPanel"
-      title="Show JSON Input"
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-    </button>
-
-    <VisualizerPanel class="explorer-panel" />
   </main>
 
   <!-- ─── Settings Modal ───────────────────────────────── -->
@@ -170,8 +162,16 @@ const showGutter = computed(() => isSplit.value && state.inputPanelVisible)
 </template>
 
 <style scoped>
-/* ─── SPLIT MODE ─────────────────────────────────────────────────────────── */
-.workspace-layout {
+/* ─── APP BODY (UNIFIED) ─────────────────────────────────────────────────── */
+.app-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content-area {
   display: flex;
   flex-direction: row;
   flex: 1 1 auto;
@@ -238,14 +238,7 @@ const showGutter = computed(() => isSplit.value && state.inputPanelVisible)
   transform: translateX(-10px);
 }
 
-/* ─── TAB MODE ───────────────────────────────────────────────────────────── */
-.tab-mode-layout {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
+/* ─── TAB MODE SPECIFIC ──────────────────────────────────────────────────── */
 
 .tab-bar {
   display: flex;
@@ -284,13 +277,7 @@ const showGutter = computed(() => isSplit.value && state.inputPanelVisible)
   color: #fff;
 }
 
-.tab-content {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+
 
 .tab-panel-fill {
   flex: 1 1 auto;

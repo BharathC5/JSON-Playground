@@ -97,6 +97,8 @@ const getBadge = (p) => {
 // ─── Pan ─────────────────────────────────────────────────────────────────────
 const panX = ref(0)
 const panY = ref(0)
+const isZooming = ref(false)
+let zoomTimer = null
 let isDragging = false
 let startX = 0
 let startY = 0
@@ -126,21 +128,70 @@ const onMouseUp = () => {
   }
 }
 
-// ─── Zoom ─────────────────────────────────────────────────────────────────────
+// ─── Zoom (towards cursor / viewport center) ──────────────────────────────────
+const viewportEl = ref(null)
 const zoom = ref(1)
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 2.5
-const ZOOM_STEP = 0.15
+const ZOOM_STEP = 0.1
 
-const zoomIn = () => { zoom.value = Math.min(MAX_ZOOM, parseFloat((zoom.value + ZOOM_STEP).toFixed(2))) }
-const zoomOut = () => { zoom.value = Math.max(MIN_ZOOM, parseFloat((zoom.value - ZOOM_STEP).toFixed(2))) }
+/**
+ * Core zoom function. Adjusts panX/panY so that the point under
+ * (originX, originY) in viewport coordinates stays fixed on screen.
+ */
+const applyZoom = (newZoom, originX, originY) => {
+  const oldZoom = zoom.value
+  newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, parseFloat(newZoom.toFixed(2))))
+  const scale = newZoom / oldZoom
+  panX.value = originX - scale * (originX - panX.value)
+  panY.value = originY - scale * (originY - panY.value)
+  zoom.value = newZoom
+  // Trigger smooth transition class
+  isZooming.value = true
+  clearTimeout(zoomTimer)
+  zoomTimer = setTimeout(() => { isZooming.value = false }, 180)
+}
+
+const getViewportCenter = () => {
+  if (viewportEl.value) {
+    const r = viewportEl.value.getBoundingClientRect()
+    return { x: r.width / 2, y: r.height / 2 }
+  }
+  return { x: 400, y: 300 }
+}
+
+// Buttons zoom towards viewport center
+const zoomIn  = () => { const c = getViewportCenter(); applyZoom(zoom.value + ZOOM_STEP, c.x, c.y) }
+const zoomOut = () => { const c = getViewportCenter(); applyZoom(zoom.value - ZOOM_STEP, c.x, c.y) }
 const zoomReset = () => { zoom.value = 1; panX.value = 0; panY.value = 0 }
 
+// Ctrl+Scroll / trackpad pinch zooms towards mouse cursor
 const onWheel = (e) => {
   e.preventDefault()
-  if (e.ctrlKey || e.metaKey) {
-    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
-    zoom.value = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, parseFloat((zoom.value + delta).toFixed(2))))
+
+  if (e.ctrlKey || e.metaKey || e.altKey) {
+    const rect = viewportEl.value?.getBoundingClientRect()
+    const originX = rect ? e.clientX - rect.left : e.offsetX
+    const originY = rect ? e.clientY - rect.top  : e.offsetY
+
+    // Distinguish trackpad pinch (fractional deltaY, mode=0) from
+    // a discrete mouse wheel click (large integer deltaY steps).
+    // Trackpad pinch: use proportional sensitivity so it feels 1:1.
+    // Mouse wheel:    use fixed ZOOM_STEP per click.
+    const isTrackpadPinch = e.deltaMode === 0 && Math.abs(e.deltaY) < 50
+    let delta
+    if (isTrackpadPinch) {
+      // ~0.008 sensitivity: a full quick pinch (~±100 units) ≈ ±0.8 zoom
+      delta = -e.deltaY * 0.008
+    } else {
+      delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
+    }
+
+    applyZoom(zoom.value + delta, originX, originY)
+  } else {
+    // Plain scroll = pan the canvas
+    panX.value -= e.deltaX
+    panY.value -= e.deltaY
   }
 }
 
@@ -149,10 +200,11 @@ const transformStyle = computed(() => `translate(${panX.value}px, ${panY.value}p
 </script>
 
 <template>
-  <div class="flow-viewport" @mousedown="onMouseDown" @wheel.prevent="onWheel"
+  <div ref="viewportEl" class="flow-viewport" @mousedown="onMouseDown" @wheel.prevent="onWheel"
     :style="{ backgroundPosition: `${panX}px ${panY}px`, backgroundSize: `${30 * zoom}px ${30 * zoom}px` }">
 
     <div v-if="layoutData" class="flow-inner"
+      :class="{ 'is-zooming': isZooming }"
       :style="{ width: layoutData.width + 'px', height: layoutData.height + 'px', transform: transformStyle }">
       <svg class="flow-edges" :width="layoutData.width" :height="layoutData.height">
         <path v-for="(path, i) in edges" :key="i" :d="path" class="flow-edge-path" />
@@ -207,6 +259,10 @@ const transformStyle = computed(() => `translate(${panX.value}px, ${panY.value}p
   left: 0;
   transform-origin: 0 0;
   will-change: transform;
+}
+
+.flow-inner.is-zooming {
+  transition: transform 0.12s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .flow-edges {
