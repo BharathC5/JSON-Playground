@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="./public/favicon.svg" width="120" alt="JSON-PlayGround Logo" />
-  <h1>{ JSON-PlayGround }</h1>
+  <img src="./public/favicon.svg" width="120" alt="JSONLens Logo" />
+  <h1>{ JSONLens }</h1>
   <p><strong>A God-Tier JSON Explorer, Debugger, and Visualizer.</strong></p>
   
   <p>
@@ -12,7 +12,7 @@
 
 ---
 
-JSON-PlayGround is a premium, high-performance web tool engineered for developers who work with complex, deeply nested JSON payloads. It goes far beyond `JSON.parse()`, offering a custom-built parsing engine that pinpoints syntax errors perfectly, auto-sanitizes garbage characters from rich-text editors, and visually maps out your data architectures.
+JSONLens is a premium, high-performance web tool engineered for developers who work with complex, deeply nested JSON payloads. It goes far beyond `JSON.parse()`, offering a custom-built parsing engine that pinpoints syntax errors perfectly, auto-sanitizes garbage characters from rich-text editors, and visually maps out your data architectures.
 
 ## ✨ God-Tier Features
 
@@ -47,8 +47,8 @@ Built for both ultra-wide monitors and cramped laptop screens:
 
 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/json-playground.git
-cd json-playground
+git clone https://github.com/your-username/jsonlens.git
+cd jsonlens
 ```
 
 2. Install dependencies
@@ -75,7 +75,7 @@ npm run build
 
 ## 🤝 Contributing
 Contributions, issues, and feature requests are welcome! 
-Feel free to check [issues page](https://github.com/your-username/json-playground/issues) if you want to contribute.
+Feel free to check [issues page](https://github.com/your-username/jsonlens/issues) if you want to contribute.
 
 ## 📝 License
 This project is [MIT](https://opensource.org/licenses/MIT) licensed.

@@ -51,7 +51,7 @@ const showToggleBtn = computed(() => props.layoutMode === 'split')
           <path d="M 185 30 Q 105 30, 96 95 L 88 175 Q 80 225, 36 238 Q 8 246, 8 265 Q 8 284, 36 292 Q 80 305, 88 355 L 96 435 Q 105 500, 185 500" fill="none" stroke="url(#lg-left)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
 
-        <h1>JSON-PlayGround</h1>
+        <h1>JSONLens</h1>
 
         <!-- Right brace -->
         <svg class="brace" width="18" height="26" viewBox="0 0 210 500" xmlns="http://www.w3.org/2000/svg">
