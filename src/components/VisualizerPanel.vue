@@ -6,6 +6,7 @@ import { copyToClipboard } from '../composables/useToast'
 import TreeNode from './TreeNode.vue'
 import Flowchart from './Flowchart.vue'
 import ConsolePanel from './ConsolePanel.vue'
+import FieldMapper from './FieldMapper.vue'
 
 const { state } = useWorkbench()
 
@@ -85,6 +86,10 @@ const closeSearch = () => {
         <button class="view-toggle-btn" :class="{ active: state.currentView === 'tree' }" @click="setView('tree')">Tree</button>
         <button class="view-toggle-btn" :class="{ active: state.currentView === 'flow' }" @click="setView('flow')">Flowchart</button>
         <button class="view-toggle-btn" :class="{ active: state.currentView === 'console' }" @click="setView('console')">Console</button>
+        <button class="view-toggle-btn" :class="{ active: state.currentView === 'mapper' }" @click="setView('mapper')">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Mapper
+        </button>
       </div>
     </div>
 
@@ -133,6 +138,9 @@ const closeSearch = () => {
         </div>
         <div v-show="state.currentView === 'console'" class="console-container">
           <ConsolePanel />
+        </div>
+        <div v-show="state.currentView === 'mapper'" class="mapper-container">
+          <FieldMapper />
         </div>
       </template>
     </div>
@@ -313,6 +321,14 @@ const closeSearch = () => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.mapper-container {
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .tree-empty {

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useWorkbench } from '../composables/useWorkbench'
+import { copyToClipboard, showToast } from '../composables/useToast'
 
 const props = defineProps({
   inputVisible: Boolean,
@@ -33,6 +34,16 @@ const onCustomInput = () => {
 
 // Only show the hide-input button in split mode
 const showToggleBtn = computed(() => props.layoutMode === 'split')
+
+// ─── Copy as JS Variable ─────────────────────────────────────────────────────
+const copyAsVar = () => {
+  if (!state.parsedData) return showToast('No valid JSON to export')
+  const varName = state.rootVarName || 'data'
+  const body = JSON.stringify(state.parsedData, null, 2)
+  const code = `const ${varName} = ${body};`
+  copyToClipboard(code)
+}
+
 </script>
 
 <template>
@@ -107,7 +118,22 @@ const showToggleBtn = computed(() => props.layoutMode === 'split')
         />
       </label>
 
+      <!-- Copy as JS Variable -->
+      <button
+        @click="copyAsVar"
+        class="btn-small btn-copy-var"
+        :disabled="!state.parsedData"
+        :title="`Copy  const ${state.rootVarName} = {...}  to clipboard`"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="16 18 22 12 16 6"/>
+          <polyline points="8 6 2 12 8 18"/>
+        </svg>
+        Copy as <code class="var-preview">const {{ state.rootVarName }}</code>
+      </button>
+
       <!-- Settings -->
+
       <button @click="emit('open-settings')" class="btn-small btn-settings" title="Configure settings">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -217,5 +243,31 @@ const showToggleBtn = computed(() => props.layoutMode === 'split')
 
 .btn-settings {
   gap: 5px;
+}
+
+.btn-copy-var {
+  border-color: rgba(88, 166, 255, 0.3);
+  gap: 5px;
+}
+
+.btn-copy-var:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--accent);
+}
+
+.btn-copy-var:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.var-preview {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.1);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-left: 1px;
 }
 </style>

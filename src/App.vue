@@ -103,6 +103,10 @@ const showGutter = computed(() => isSplit.value && state.inputPanelVisible)
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         Console
       </button>
+      <button class="tab-btn" :class="{ active: state.currentView === 'mapper' }" @click="state.currentView = 'mapper'">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Mapper
+      </button>
     </div>
 
     <!-- Content Area (Split mode row, or Tab mode active panel) -->
