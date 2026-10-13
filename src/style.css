@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
+  color-scheme: dark;
   /* Richer, modern dark theme */
   --bg: #0f1115;
   --bg-panel: #16181d;
@@ -24,6 +25,40 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+/* ─── Sleek Transparent Scrollbars (WebKit / Blink / macOS) ──────────────── */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.45);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent !important;
 }
 
 html,
@@ -34,6 +69,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
+  color-scheme: dark;
 }
 
 body {
@@ -52,11 +88,16 @@ body {
 
 /* Base Inputs & Buttons */
 .btn-small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   background: var(--bg-panel-alt);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 4px 10px;
+  padding: 0 10px;
+  height: 28px;
+  box-sizing: border-box;
   font-size: 12px;
   cursor: pointer;
   font-family: var(--font-ui);

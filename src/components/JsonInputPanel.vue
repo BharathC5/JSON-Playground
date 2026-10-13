@@ -3,9 +3,13 @@ import { useWorkbench } from '../composables/useWorkbench'
 import { showToast } from '../composables/useToast'
 import { ref, computed, onMounted } from 'vue'
 
-const { state, setJsonInput, formatJson, minifyJson, resetJson } = useWorkbench()
+const {
+  state, setJsonInput, formatJson, minifyJson, resetJson,
+  saveToCache, loadFromCache, removeFromCache, clearCache, restoreLastInput,
+} = useWorkbench()
 
 const preRef = ref(null)
+const showCacheDropdown = ref(false)
 
 const onInput = (e) => {
   setJsonInput(e.target.value)
@@ -19,7 +23,7 @@ const onScroll = (e) => {
   }
 }
 
-// Auto-format pasted JSON
+// Auto-format pasted JSON and auto-save to cache
 const onPaste = (e) => {
   const raw = e.clipboardData?.getData('text')
   if (!raw) return
@@ -34,7 +38,9 @@ const onPaste = (e) => {
   }
   e.preventDefault()
   setJsonInput(formatted)
-  showToast('✓ JSON auto-formatted')
+  // Auto-save to history on successful paste
+  saveToCache()
+  showToast('✓ JSON auto-formatted & cached')
 }
 
 const onFormat = () => {
@@ -49,19 +55,43 @@ const onMinify = () => {
 
 const onReset = () => resetJson()
 
+const onSaveToCache = () => {
+  if (!state.parsedData) return showToast('No valid JSON to save')
+  saveToCache()
+  showToast('✓ Saved to history')
+}
+
+const onLoadCacheEntry = (id) => {
+  loadFromCache(id)
+  showCacheDropdown.value = false
+  showToast('✓ Loaded from history')
+}
+
+const onRemoveCacheEntry = (id) => {
+  removeFromCache(id)
+}
+
+const timeAgo = (ts) => {
+  const diff = Date.now() - ts
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
 // ─── Lightweight JSON syntax highlighter ──────────────────────────────────────
 const highlighted = computed(() => {
   const text = state.jsonInputText
   if (!text) return ''
 
-  // Step 1: escape HTML so injected spans are safe
   const escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  // Step 2: tokenise with a single regex pass
-  // Captures: JSON string (key or value), true, false, null, number
   return escaped.replace(
     /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"\r\n])*"(?:\s*:)?|true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
     (match) => {
@@ -77,17 +107,20 @@ const highlighted = computed(() => {
   )
 })
 
-// Initialize with sample data if empty
+// On mount: restore last session's JSON, or fall back to sample
 onMounted(() => {
   if (!state.jsonInputText) {
-    const SAMPLE = {
-      totalItems: 2,
-      member: [
-        { id: '101', type: 'VPMInstance', attributes: { name: 'High-Pressure Turbine', unitOfMeasure: 'EA' } },
-        { id: '102', type: 'VPMInstance', attributes: { name: 'Centrifugal Pump', unitOfMeasure: 'EA' } },
-      ],
+    const restored = restoreLastInput()
+    if (!restored) {
+      const SAMPLE = {
+        totalItems: 2,
+        member: [
+          { id: '101', type: 'VPMInstance', attributes: { name: 'High-Pressure Turbine', unitOfMeasure: 'EA' } },
+          { id: '102', type: 'VPMInstance', attributes: { name: 'Centrifugal Pump', unitOfMeasure: 'EA' } },
+        ],
+      }
+      setJsonInput(JSON.stringify(SAMPLE, null, 2))
     }
-    setJsonInput(JSON.stringify(SAMPLE, null, 2))
   }
 })
 </script>
@@ -95,7 +128,9 @@ onMounted(() => {
 <template>
   <section class="panel panel-json">
     <div class="panel-header">
-      <span>PASTE JSON</span>
+      <span>
+        {{ state.parsedData ? (state.rootVarName || 'data').toUpperCase() : 'PASTE JSON' }}
+      </span>
       <div class="panel-header-actions">
         <button @click="onFormat" class="btn-small" title="Pretty-print the JSON">Format</button>
         <button @click="onMinify" class="btn-small" title="Minify the JSON">Minify</button>
@@ -104,7 +139,6 @@ onMounted(() => {
     </div>
 
     <div class="editor-wrap">
-      <!-- Highlight layer (behind) -->
       <pre
         ref="preRef"
         class="hl-pre"
@@ -112,7 +146,6 @@ onMounted(() => {
         v-html="highlighted || ' '"
       ></pre>
 
-      <!-- Edit layer (in front, transparent text so highlight shows through) -->
       <textarea
         :value="state.jsonInputText"
         @input="onInput"
@@ -136,6 +169,9 @@ onMounted(() => {
       </div>
       <pre class="err-body">{{ state.jsonError }}</pre>
     </div>
+
+    <!-- Click-outside to close dropdown -->
+    <div v-if="showCacheDropdown" class="cache-overlay" @click="showCacheDropdown = false"></div>
   </section>
 </template>
 
@@ -169,6 +205,18 @@ onMounted(() => {
   gap: 8px;
 }
 
+.header-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: #98c379;
+  background: rgba(152, 195, 121, 0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+
 /* ─── Editor wrap ──────────────────────────────────────────────────────────── */
 .editor-wrap {
   flex: 1 1 auto;
@@ -177,7 +225,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-/* Shared typographic constants — MUST be identical between pre and textarea */
 .hl-pre,
 .json-textarea {
   font-family: var(--font-mono);
@@ -194,43 +241,64 @@ onMounted(() => {
   outline: none;
 }
 
-/* ─── Highlight layer (pre) ─────────────────────────────────────────────────  */
 .hl-pre {
   position: absolute;
   inset: 0;
-  overflow: hidden;          /* scroll position controlled by JS sync */
+  overflow: hidden;
   pointer-events: none;
   background: var(--bg);
-  color: #5c6370;            /* default: punctuation & braces */
+  color: #5c6370;
   z-index: 0;
   height: 100%;
 }
 
-/* ─── Edit layer (textarea) ──────────────────────────────────────────────────  */
 .json-textarea {
   position: relative;
   z-index: 1;
   resize: none;
   background: transparent;
-  color: transparent;        /* text hidden — highlight layer shows color */
-  caret-color: #abb2bf;      /* cursor stays visible */
+  color: transparent;
+  caret-color: #abb2bf;
   user-select: text;
   height: 100%;
   overflow: auto;
 }
 
-/* Placeholder visible when empty */
 .json-textarea::placeholder {
   color: var(--text-faint);
   opacity: 1;
 }
 
-/* ─── Token colors (One Dark palette) ───────────────────────────────────────  */
-:deep(.hl-key)  { color: #e06c75; }                        /* keys     → rose    */
-:deep(.hl-str)  { color: #98c379; }                        /* strings  → green   */
-:deep(.hl-num)  { color: #d19a66; }                        /* numbers  → amber   */
-:deep(.hl-bool) { color: #56b6c2; }                        /* booleans → cyan    */
-:deep(.hl-null) { color: #56b6c2; font-style: italic; }   /* null     → cyan    */
+:deep(.hl-key)  { color: #e06c75; }
+:deep(.hl-str)  { color: #98c379; }
+:deep(.hl-num)  { color: #d19a66; }
+:deep(.hl-bool) { color: #56b6c2; }
+:deep(.hl-null) { color: #56b6c2; font-style: italic; }
+
+/* ─── Cache / History ──────────────────────────────────────────────────────── */
+.cache-dropdown-wrap {
+  position: relative;
+}
+
+.btn-cache {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-cache.active { border-color: var(--accent); color: var(--accent); }
+
+.cache-count {
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 0 5px;
+  min-width: 14px;
+  text-align: center;
+  line-height: 14px;
+}
+
 
 /* ─── Error panel ────────────────────────────────────────────────────────────  */
 .json-error {

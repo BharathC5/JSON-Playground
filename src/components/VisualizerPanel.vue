@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useWorkbench } from '../composables/useWorkbench'
 import { getType, pathToJs, pathToBreadcrumb, shortPreview } from '../utils/jsonPath'
 import { copyToClipboard } from '../composables/useToast'
@@ -10,6 +10,28 @@ import FieldMapper from './FieldMapper.vue'
 
 const { state } = useWorkbench()
 
+// ─── Tab animation direction ──────────────────────────────────────────────────
+const TAB_ORDER = ['tree', 'flow', 'console', 'mapper']
+const slideDir  = ref('right') // 'right' | 'left'
+const activeView = ref(state.currentView)
+
+const setView = (view) => {
+  const from = TAB_ORDER.indexOf(state.currentView)
+  const to   = TAB_ORDER.indexOf(view)
+  slideDir.value = to >= from ? 'right' : 'left'
+  state.currentView = view
+  // small rAF delay so the class swap triggers the CSS transition
+  requestAnimationFrame(() => { activeView.value = view })
+}
+
+// Keep activeView in sync when changed externally (e.g. Tab Mode tab bar in App.vue)
+watch(() => state.currentView, (nv, ov) => {
+  const from = TAB_ORDER.indexOf(ov)
+  const to   = TAB_ORDER.indexOf(nv)
+  slideDir.value = to >= from ? 'right' : 'left'
+  requestAnimationFrame(() => { activeView.value = nv })
+})
+
 const searchQuery = ref('')
 const searchResults = ref([])
 const showSearchResults = ref(false)
@@ -18,10 +40,6 @@ const breadcrumbPathArr = ref([])
 const breadcrumbJs = ref('')
 const showBreadcrumb = ref(false)
 const breadcrumbCollapsed = ref(false)
-
-const setView = (view) => {
-  state.currentView = view
-}
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 const onSearchInput = () => {
@@ -118,13 +136,13 @@ const closeSearch = () => {
       </div>
     </div>
 
-    <!-- ─── Visualizer ─────────────────────────────────────────── -->
-    <div class="visualizer-container">
+    <!-- ─── Visualizer ─────────────────────────────────────────────── -->
+    <div class="visualizer-container" :class="'slide-' + slideDir">
       <div v-if="!state.parsedData" class="tree-empty">
         {{ state.jsonError ? 'Fix the JSON error on the left to activate visualizer.' : 'Paste valid JSON on the left to explore properties.' }}
       </div>
       <template v-else>
-        <div v-show="state.currentView === 'tree'" class="tree-container">
+        <div class="tab-panel" :class="{ active: activeView === 'tree' }">
           <TreeNode
             :nodeKey="state.rootVarName"
             :value="state.parsedData"
@@ -133,13 +151,13 @@ const closeSearch = () => {
             @inspect="onInspect"
           />
         </div>
-        <div v-show="state.currentView === 'flow'" class="flow-container-wrap">
+        <div class="tab-panel" :class="{ active: activeView === 'flow' }">
           <Flowchart @inspect="onInspect" />
         </div>
-        <div v-show="state.currentView === 'console'" class="console-container">
+        <div class="tab-panel" :class="{ active: activeView === 'console' }">
           <ConsolePanel />
         </div>
-        <div v-show="state.currentView === 'mapper'" class="mapper-container">
+        <div class="tab-panel" :class="{ active: activeView === 'mapper' }">
           <FieldMapper />
         </div>
       </template>
@@ -189,6 +207,7 @@ const closeSearch = () => {
 .panel {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   position: relative;
@@ -300,35 +319,42 @@ const closeSearch = () => {
 .visualizer-container {
   flex: 1 1 auto;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  position: relative;  /* establishes stacking context for absolute children */
   min-height: 0;
+  /* Container height comes from flex parent, not from children content.
+     All children are position:absolute so they don't contribute to height. */
 }
 
-.tree-container {
-  flex: 1 1 auto;
+/* All panels sit on top of each other, absolutely positioned — ALWAYS */
+.tab-panel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  /* Inactive: invisible + shifted out */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Direction-aware enter transform */
+.slide-right .tab-panel { transform: translateX(28px); }
+.slide-left  .tab-panel { transform: translateX(-28px); }
+
+/* Active panel: visible + reset transform. NO position change — stays absolute. */
+.tab-panel.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0) !important;
+}
+
+/* Tree panel needs scroll + padding */
+.tab-panel:first-child {
   overflow: auto;
   padding: 16px;
-}
-
-.flow-container-wrap {
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
-.console-container {
-  flex: 1 1 auto;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.mapper-container {
-  flex: 1 1 auto;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .tree-empty {
@@ -337,6 +363,7 @@ const closeSearch = () => {
   font-size: 13px;
   text-align: center;
 }
+
 
 /* ─── Inspected Target ────────────────────────────────────────────────────── */
 

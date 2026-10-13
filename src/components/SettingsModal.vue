@@ -3,25 +3,35 @@ import { ref } from 'vue'
 import { useWorkbench } from '../composables/useWorkbench'
 import { showToast } from '../composables/useToast'
 
-const { state, resetLayout } = useWorkbench()
+const { state, resetLayout, wipePersistedData, clearCache } = useWorkbench()
 const emit = defineEmits(['close', 'reset-layout'])
 
 // Work on a local copy so user can Cancel
 const local = ref({
   ...state.settings,
   layoutMode: state.settings.layoutMode ?? 'split',
+  splitPosition: state.settings.splitPosition ?? 'left',
 })
 
 const save = () => {
+  const wasCacheOn = state.settings.persistCache;
   Object.assign(state.settings, local.value)
-  showToast('✓ Settings saved successfully!')
+  // If user just turned cache OFF, wipe all persisted JSON data
+  if (wasCacheOn && !local.value.persistCache) {
+    wipePersistedData();
+    showToast('✓ Settings saved — cache cleared');
+  } else {
+    showToast('✓ Settings saved successfully!');
+  }
   emit('close')
 }
 
 const onResetLayout = () => {
   resetLayout()
+  local.value.splitPosition = 'left'
+  state.settings.splitPosition = 'left'
   emit('reset-layout')
-  showToast('Layout reset to default')
+  showToast('Split layout reset to default')
 }
 </script>
 
@@ -83,6 +93,57 @@ const onResetLayout = () => {
               <span class="mode-desc">Full-screen tabs: Input / Tree / Flow / Console</span>
             </button>
           </div>
+
+          <!-- Split Dock Position (when in Split View) -->
+          <div v-if="local.layoutMode === 'split'" class="split-pos-config">
+            <div class="split-pos-label">Split Dock Position</div>
+            <div class="split-pos-picker">
+              <button
+                type="button"
+                class="split-pos-card"
+                :class="{ active: (local.splitPosition || 'left') === 'left' }"
+                @click="local.splitPosition = 'left'"
+                title="Dock JSON Input to Left"
+              >
+                <div class="pos-demo pos-demo-left">
+                  <div class="pos-pane pos-active"></div>
+                  <div class="pos-div-v"></div>
+                  <div class="pos-pane"></div>
+                </div>
+                <span class="pos-title">Left</span>
+              </button>
+
+              <button
+                type="button"
+                class="split-pos-card"
+                :class="{ active: local.splitPosition === 'bottom' }"
+                @click="local.splitPosition = 'bottom'"
+                title="Dock JSON Input to Bottom"
+              >
+                <div class="pos-demo pos-demo-bottom">
+                  <div class="pos-pane"></div>
+                  <div class="pos-div-h"></div>
+                  <div class="pos-pane pos-active"></div>
+                </div>
+                <span class="pos-title">Bottom</span>
+              </button>
+
+              <button
+                type="button"
+                class="split-pos-card"
+                :class="{ active: local.splitPosition === 'right' }"
+                @click="local.splitPosition = 'right'"
+                title="Dock JSON Input to Right"
+              >
+                <div class="pos-demo pos-demo-right">
+                  <div class="pos-pane"></div>
+                  <div class="pos-div-v"></div>
+                  <div class="pos-pane pos-active"></div>
+                </div>
+                <span class="pos-title">Right</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- ── JS / Parser ────────────────────────── -->
@@ -110,6 +171,30 @@ const onResetLayout = () => {
             Show prototype methods in console autocomplete
             <span class="help-chip">.map .filter .forEach…</span>
           </label>
+        </div>
+
+        <!-- ── Data & Cache ────────────────────────── -->
+        <div class="setting-section">
+          <div class="section-heading">Data &amp; Cache</div>
+
+          <label class="setting-checkbox-label">
+            <input type="checkbox" v-model="local.persistCache" />
+            Remember JSON across sessions
+            <span class="help-chip">Restores last pasted JSON on reload</span>
+          </label>
+
+          <div class="cache-info" v-if="state.jsonCache.length">
+            <span class="cache-info-text">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              {{ state.jsonCache.length }} cached payload{{ state.jsonCache.length === 1 ? '' : 's' }}
+            </span>
+            <button class="btn-small btn-danger" @click="clearCache(); showToast('Cache cleared')" style="font-size: 10px; padding: 3px 10px;">
+              Clear History
+            </button>
+          </div>
+          <span class="setting-help" v-if="!local.persistCache">
+            When disabled, the default sample JSON will load on every page visit.
+          </span>
         </div>
 
         <!-- ── About & Author ─────────────────────── -->
@@ -337,6 +422,97 @@ const onResetLayout = () => {
   line-height: 1.4;
 }
 
+/* ─── Split Position Config ─── */
+.split-pos-config {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.split-pos-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.split-pos-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.split-pos-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: var(--text-dim);
+}
+
+.split-pos-card:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.split-pos-card.active {
+  border-color: var(--accent);
+  background: rgba(88, 166, 255, 0.08);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pos-demo {
+  width: 48px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  background: var(--bg);
+}
+
+.pos-demo-left, .pos-demo-right {
+  flex-direction: row;
+}
+
+.pos-demo-bottom {
+  flex-direction: column;
+}
+
+.pos-pane {
+  flex: 1;
+  background: transparent;
+}
+
+.pos-pane.pos-active {
+  background: rgba(88, 166, 255, 0.35);
+}
+
+.pos-div-v {
+  width: 2px;
+  background: var(--border);
+}
+
+.pos-div-h {
+  height: 2px;
+  width: 100%;
+  background: var(--border);
+}
+
+.pos-title {
+  font-size: 11px;
+  font-family: var(--font-ui);
+}
+
 /* ─── Setting controls ─── */
 .setting-group {
   display: flex;
@@ -353,6 +529,25 @@ const onResetLayout = () => {
 .setting-help {
   color: var(--text-faint);
   font-size: 11px;
+}
+
+.cache-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 6px;
+}
+
+.cache-info-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 .setting-select {

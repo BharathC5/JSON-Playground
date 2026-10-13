@@ -35,6 +35,7 @@ const addMapping = (field) => {
     outKey: sanitizeKey(field.key),
     sourcePath: field.path,
     tsType: field.tsType,
+    arrayMode: 'index',  // default; shown as pills when path has array index
   })
 }
 
@@ -115,46 +116,185 @@ const addFiltered = () => {
 // ─── Code generation ──────────────────────────────────────────────────────────
 const root = computed(() => state.rootVarName || 'data')
 
+const ARRAY_MODES = [
+  { value: 'index',   label: '[n]',       title: 'Direct index access' },
+  { value: 'map',     label: '.map()',     title: 'Array.map — transform each item' },
+  { value: 'forEach', label: '.forEach()', title: 'Array.forEach — iterate each item' },
+  { value: 'find',    label: '.find()',    title: 'Array.find — first matching item' },
+  { value: 'filter',  label: '.filter()', title: 'Array.filter — all matching items' },
+]
+
+// Returns true if the path contains a numeric (array index) segment
+const hasArrayIndex = (path) => path.split('.').some(p => /^\d+$/.test(p))
+
+// Split a path at the first array index: { arrayPath, index, subPath }
+const splitAtIndex = (path) => {
+  const parts = path.split('.')
+  const i = parts.findIndex(p => /^\d+$/.test(p))
+  if (i === -1) return null
+  return {
+    arrayPath: parts.slice(0, i).join('.'),
+    index: Number(parts[i]),
+    subPath: parts.slice(i + 1).join('.'),
+  }
+}
+
+// Build an accessor string for a single segment (bracket notation for numbers)
+const seg = (p, oc) => /^\d+$/.test(p)
+  ? (oc ? `?.[${p}]` : `[${p}]`)
+  : (oc ? `?.${p}` : `.${p}`)
+
+// Plain accessor (bracket-notation-aware, no iteration)
 const acc = (path) => {
   const oc = state.settings?.optionalChaining
-  return oc
-    ? root.value + path.split('.').map(p => `?.${p}`).join('')
-    : `${root.value}.${path}`
+  return root.value + path.split('.').map(p => seg(p, oc)).join('')
+}
+
+// Accessor that respects the mapping's arrayMode
+const accWithMode = (m) => {
+  const oc = state.settings?.optionalChaining
+  if (!hasArrayIndex(m.sourcePath) || m.arrayMode === 'index') {
+    return acc(m.sourcePath)
+  }
+
+  const split = splitAtIndex(m.sourcePath)
+  if (!split) return acc(m.sourcePath)
+
+  const { arrayPath, index, subPath } = split
+  const arrExpr  = root.value + arrayPath.split('.').filter(Boolean).map(p => seg(p, oc)).join('')
+  const itemExpr = subPath ? `item.${subPath}` : 'item'
+  const itemKey  = subPath ? subPath.split('.')[0] : null
+
+  switch (m.arrayMode) {
+    case 'map':
+      return `${arrExpr}.map(item => ${itemExpr})`
+    case 'forEach':
+      // forEach is block-statement style — special handling in generatedCode
+      return `__FOREACH__${arrExpr}__${itemExpr}__${m.outKey}`
+    case 'find':
+      return itemKey
+        ? `${arrExpr}.find(item => item.${itemKey})`
+        : `${arrExpr}.find(Boolean)`
+    case 'filter':
+      return itemKey
+        ? `${arrExpr}.filter(item => item.${itemKey})`
+        : `${arrExpr}.filter(Boolean)`
+    default:
+      return acc(m.sourcePath)
+  }
 }
 
 const generatedCode = computed(() => {
   if (mappings.value.length === 0)
     return `// ① Click fields on the left to add them to the mapping\n// ② Edit the output key name on each row\n// ③ Choose a format and hit Copy Code`
 
-  const out = (outputVar.value || 'mappedData').trim()
-  const fmt = outputFormat.value
+  const out    = (outputVar.value || 'mappedData').trim()
+  const fmt    = outputFormat.value
   const Pascal = out.charAt(0).toUpperCase() + out.slice(1)
-  const pairs = mappings.value.map(m => `  ${m.outKey}: ${acc(m.sourcePath)},`).join('\n')
+  const oc     = state.settings?.optionalChaining
 
-  if (fmt === 'const_obj') return `const ${out} = {\n${pairs}\n};`
-  if (fmt === 'let_obj')   return `let ${out} = {\n${pairs}\n};`
+  // Separate forEach mappings (block-statement style) from inline mappings
+  const forEachMappings = mappings.value.filter(m => m.arrayMode === 'forEach' && hasArrayIndex(m.sourcePath))
 
+  const allPairs = mappings.value.map(m => {
+    const v = accWithMode(m)
+    if (v.startsWith('__FOREACH__')) return `  // ${m.outKey}: populated via forEach below`
+    return `  ${m.outKey}: ${v},`
+  }).join('\n')
+
+  // Build forEach blocks with proper null-guard
+  let forEachBlocks = ''
+  if (forEachMappings.length > 0) {
+    forEachBlocks = '\n\n' + forEachMappings.map(m => {
+      const split = splitAtIndex(m.sourcePath)
+      if (!split) return ''
+      const arrExpr = root.value + split.arrayPath.split('.').filter(Boolean).map(p => seg(p, oc)).join('')
+      const itemExpr = split.subPath ? `item.${split.subPath}` : 'item'
+      if (oc) {
+        return `${arrExpr}?.forEach((item) => {\n  ${out}.${m.outKey} = ${itemExpr};\n});`
+      }
+      return `if (${arrExpr}) {\n  ${arrExpr}.forEach((item) => {\n    ${out}.${m.outKey} = ${itemExpr};\n  });\n}`
+    }).join('\n\n')
+  }
+
+  // ─── Format: const {} ─────────────────────────────────────────────────
+  if (fmt === 'const_obj') {
+    return `/** Mapped from ${root.value} */\nconst ${out} = {\n${allPairs}\n};${forEachBlocks}`
+  }
+
+  // ─── Format: let {} ───────────────────────────────────────────────────
+  if (fmt === 'let_obj') {
+    return `/** Mapped from ${root.value} */\nlet ${out} = {\n${allPairs}\n};${forEachBlocks}`
+  }
+
+  // ─── Format: Destructure ──────────────────────────────────────────────
   if (fmt === 'destructure') {
     const keys = [...new Set(mappings.value.map(m => m.outKey))]
-    return `const { ${keys.join(', ')} } = ${root.value};`
+    // Handle renamed destructuring when outKey differs from source key
+    const parts = mappings.value.map(m => {
+      const srcKey = m.sourcePath.split('.').pop()
+      return m.outKey !== srcKey ? `${srcKey}: ${m.outKey}` : m.outKey
+    })
+    return `const { ${[...new Set(parts)].join(', ')} } = ${root.value};`
   }
 
+  // ─── Format: TypeScript Interface ─────────────────────────────────────
   if (fmt === 'ts_iface') {
     const iLines = mappings.value.map(m => `  ${m.outKey}: ${m.tsType};`).join('\n')
-    return `interface ${Pascal} {\n${iLines}\n}\n\nconst ${out}: ${Pascal} = {\n${pairs}\n};`
+    return [
+      `interface I${Pascal} {`,
+      iLines,
+      `}`,
+      ``,
+      `/** Maps raw API response into ${Pascal} shape */`,
+      `const ${out}: I${Pascal} = {`,
+      allPairs,
+      `};${forEachBlocks}`,
+    ].join('\n')
   }
 
+  // ─── Format: Named mapper function ────────────────────────────────────
   if (fmt === 'fn_mapper') {
-    const fnPairs = mappings.value.map(m => `    ${m.outKey}: ${root.value}.${m.sourcePath},`).join('\n')
-    return `function map${Pascal}(${root.value}) {\n  return {\n${fnPairs}\n  };\n}`
+    const fnPairs = mappings.value.map(m => {
+      const v = accWithMode(m)
+      if (v.startsWith('__FOREACH__')) return `    // ${m.outKey}: requires iteration — handle outside return`
+      return `    ${m.outKey}: ${v},`
+    }).join('\n')
+    const paramType = oc ? `${root.value}?` : root.value
+    return [
+      `/**`,
+      ` * Maps raw API response into a ${out} object.`,
+      ` * @param {Object} ${root.value} - The raw API response`,
+      ` * @returns {Object} Mapped ${out}`,
+      ` */`,
+      `function map${Pascal}(${root.value}) {`,
+      oc ? `  if (!${root.value}) return null;\n` : '',
+      `  return {`,
+      fnPairs,
+      `  };`,
+      `}`,
+    ].filter(Boolean).join('\n') + forEachBlocks
   }
 
+  // ─── Format: Arrow function ───────────────────────────────────────────
   if (fmt === 'fn_arrow') {
-    const fnPairs = mappings.value.map(m => `  ${m.outKey}: ${root.value}.${m.sourcePath},`).join('\n')
-    return `const map${Pascal} = (${root.value}) => ({\n${fnPairs}\n});`
+    const fnPairs = mappings.value.map(m => {
+      const v = accWithMode(m)
+      if (v.startsWith('__FOREACH__')) return `  // ${m.outKey}: requires iteration — handle outside`
+      return `  ${m.outKey}: ${v},`
+    }).join('\n')
+    return [
+      `/** Maps raw API response into a ${out} object. */`,
+      `const map${Pascal} = (${root.value}) => ({`,
+      fnPairs,
+      `});`,
+    ].join('\n') + forEachBlocks
   }
+
   return ''
 })
+
+
 
 // ─── Syntax-highlight the generated code ─────────────────────────────────────
 const highlightedCode = computed(() => {
@@ -288,10 +428,23 @@ const typeClass = (t) => {
           <!-- Arrow -->
           <span class="mt-arrow-icon">←</span>
 
-          <!-- Source path (read-only label + full path tooltip) -->
-          <span class="mt-source" :title="acc(m.sourcePath)">
-            <span class="mt-src-root">{{ root }}</span>.<span class="mt-src-path">{{ m.sourcePath }}</span>
-          </span>
+          <!-- Source path + array iteration mode pills -->
+          <div class="mt-source-wrap">
+            <span class="mt-source" :title="acc(m.sourcePath)">
+              <span class="mt-src-root">{{ root }}</span>.<span class="mt-src-path">{{ m.sourcePath }}</span>
+            </span>
+            <!-- Array iteration mode pills — only shown when path goes through an array -->
+            <div v-if="hasArrayIndex(m.sourcePath)" class="arr-modes">
+              <button
+                v-for="mode in ARRAY_MODES"
+                :key="mode.value"
+                class="arr-mode-pill"
+                :class="{ active: m.arrayMode === mode.value }"
+                :title="mode.title"
+                @click="m.arrayMode = mode.value"
+              >{{ mode.label }}</button>
+            </div>
+          </div>
 
           <!-- Remove -->
           <button class="mt-rm-btn" @click="removeMapping(m.id)" title="Remove this mapping">✕</button>
@@ -313,7 +466,6 @@ const typeClass = (t) => {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Copy Code
         </button>
-        <span class="mr-hint">Paste directly into VS Code</span>
       </div>
     </div>
   </div>
@@ -662,18 +814,51 @@ const typeClass = (t) => {
   flex-shrink: 0;
 }
 
-/* Source path */
-.mt-source {
+/* Source path wrapper */
+.mt-source-wrap {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mt-source {
   font-family: var(--font-mono);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
 .mt-src-root { color: #e06c75; font-weight: 600; }
 .mt-src-path { color: var(--text-dim); }
+
+/* Array iteration mode pills */
+.arr-modes {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.arr-mode-pill {
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.arr-mode-pill:hover { border-color: #d19a66; color: #d19a66; }
+.arr-mode-pill.active {
+  background: rgba(209, 154, 102, 0.12);
+  border-color: #d19a66;
+  color: #d19a66;
+}
 
 .mt-rm-btn {
   background: none;
