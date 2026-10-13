@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useWorkbench } from '../composables/useWorkbench'
 import { copyToClipboard, showToast } from '../composables/useToast'
+import { useTabGroup } from '../composables/useTabGroup'
 
 const props = defineProps({
   inputVisible: Boolean,
@@ -76,12 +77,27 @@ const copyAsVar = () => {
   copyToClipboard(code)
 }
 
+// ─── Easter egg: right-click / two-finger tap on the logo ────────────────────
+const { groupAllTabs } = useTabGroup()
+const eggMenu = ref({ open: false, x: 0, y: 0, busy: false })
+
+const openEggMenu = (e) => {
+  eggMenu.value = { open: true, x: e.clientX, y: e.clientY, busy: false }
+}
+const closeEggMenu = () => { eggMenu.value.open = false }
+
+const onGroupTabs = async () => {
+  eggMenu.value.busy = true
+  await groupAllTabs()
+  closeEggMenu()
+}
+
 </script>
 
 <template>
   <header class="topbar">
     <div class="topbar-left">
-      <div class="logo-lockup">
+      <div class="logo-lockup" @contextmenu.prevent="openEggMenu">
         <!-- Left brace -->
         <svg class="brace" width="18" height="26" viewBox="0 0 210 500" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -122,7 +138,7 @@ const copyAsVar = () => {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
           </svg>
-          JSON Entries
+          JSON Entries <span class="beta-tag">beta</span>
           <span v-if="state.jsonCache.length" class="cache-count">{{ state.jsonCache.length }}</span>
         </button>
 
@@ -174,7 +190,7 @@ const copyAsVar = () => {
       </button>
 
       <!-- Split Position Toggle (Left / Bottom / Right) -->
-      <div v-if="showToggleBtn" class="split-dock-group" title="Split Panel Position (Left, Bottom, Right)">
+      <div v-if="showToggleBtn && state.settings.showDockInToolbar" class="split-dock-group" title="Split Panel Position (Left, Bottom, Right)">
         <button
           class="btn-small dock-btn"
           :class="{ 'is-active': (state.settings.splitPosition || 'left') === 'left' }"
@@ -242,6 +258,19 @@ const copyAsVar = () => {
         Settings
       </button>
     </div>
+    <!-- Secret logo menu -->
+    <Teleport to="body">
+      <div v-if="eggMenu.open" class="egg-overlay" @click="closeEggMenu" @contextmenu.prevent="closeEggMenu">
+        <div class="egg-menu" :style="{ left: eggMenu.x + 'px', top: eggMenu.y + 'px' }" @click.stop>
+          <div class="egg-head">🥚 You found a secret</div>
+          <button class="egg-item" :disabled="eggMenu.busy" @click="onGroupTabs">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            {{ eggMenu.busy ? 'Looking for tabs…' : 'Group me together' }}
+          </button>
+          <div class="egg-hint">Pulls JSON from every open JSONLens tab into JSON Entries</div>
+        </div>
+      </div>
+    </Teleport>
   </header>
 </template>
 
@@ -570,5 +599,79 @@ const copyAsVar = () => {
   background: rgba(88, 166, 255, 0.15);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ─── Beta tag ─────────────────────────────────────────────────────────── */
+.beta-tag {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #e5c07b;
+  background: rgba(229, 192, 123, 0.12);
+  border: 1px solid rgba(229, 192, 123, 0.3);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 13px;
+}
+
+/* ─── Secret logo menu ─────────────────────────────────────────────────── */
+.logo-lockup { cursor: default; }
+
+.egg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.egg-menu {
+  position: fixed;
+  min-width: 230px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+  animation: eggPop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
+}
+
+@keyframes eggPop {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.egg-head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #ffb74d;
+  padding: 4px 8px 6px;
+}
+
+.egg-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+}
+.egg-item:hover:not(:disabled) { background: rgba(255, 140, 0, 0.14); color: #fff; }
+.egg-item:disabled { opacity: 0.6; cursor: progress; }
+
+.egg-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+  padding: 2px 8px 4px;
+  line-height: 1.4;
 }
 </style>

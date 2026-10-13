@@ -13,6 +13,7 @@ const defaultSettings = {
   showMethodsInAutocomplete: true,
   layoutMode: 'split', // 'split' | 'tab'
   splitPosition: 'left', // 'left' | 'bottom' | 'right'
+  showDockInToolbar: false, // show Left/Bottom/Right dock buttons in the top bar
   persistCache: true,   // persist last JSON + history across reloads
 };
 
@@ -130,9 +131,11 @@ export function useWorkbench() {
   };
 
   // ─── Cache operations ───────────────────────────────────────────────────────
-  const saveToCache = (label) => {
-    const text = state.jsonInputText;
-    if (!text.trim() || !state.parsedData) return;
+  const saveToCache = (label, textOverride) => {
+    const text = textOverride ?? state.jsonInputText;
+    if (!text || !text.trim()) return;
+    if (textOverride == null && !state.parsedData) return;
+    if (textOverride != null) { try { JSON.parse(text); } catch { return; } }
     // Don't duplicate: remove existing with same text
     state.jsonCache = state.jsonCache.filter(c => c.text !== text);
     state.jsonCache.unshift({

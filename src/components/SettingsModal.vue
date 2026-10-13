@@ -143,6 +143,12 @@ const onResetLayout = () => {
                 <span class="pos-title">Right</span>
               </button>
             </div>
+
+            <label class="setting-checkbox-label dock-toolbar-toggle">
+              <input type="checkbox" v-model="local.showDockInToolbar" />
+              Show dock buttons in the top bar
+              <span class="help-chip">Quick-switch Left / Bottom / Right from the workspace</span>
+            </label>
           </div>
         </div>
 
@@ -511,6 +517,11 @@ const onResetLayout = () => {
 .pos-title {
   font-size: 11px;
   font-family: var(--font-ui);
+}
+
+.dock-toolbar-toggle {
+  margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 /* ─── Setting controls ─── */
