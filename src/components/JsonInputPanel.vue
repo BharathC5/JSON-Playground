@@ -1,7 +1,8 @@
 <script setup>
 import { useWorkbench } from '../composables/useWorkbench'
 import { showToast } from '../composables/useToast'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { DEFAULT_SAMPLE_JSON_STRING } from '../utils/defaultSampleJson'
 
 const {
   state, setJsonInput, formatJson, minifyJson, resetJson,
@@ -9,10 +10,16 @@ const {
 } = useWorkbench()
 
 const preRef = ref(null)
+const textareaRef = ref(null)
 const showCacheDropdown = ref(false)
+
+const selectedText = ref('')
+const selectionRange = ref({ start: 0, end: 0 })
+const cursorIndex = ref(0)
 
 const onInput = (e) => {
   setJsonInput(e.target.value)
+  updateSelection(e)
 }
 
 // Keep highlight layer scroll in sync with textarea
@@ -20,6 +27,151 @@ const onScroll = (e) => {
   if (preRef.value) {
     preRef.value.scrollTop = e.target.scrollTop
     preRef.value.scrollLeft = e.target.scrollLeft
+  }
+}
+
+// Track text selection and cursor position
+const updateSelection = (e) => {
+  const el = e?.target || textareaRef.value
+  if (!el) return
+  const start = el.selectionStart ?? 0
+  const end = el.selectionEnd ?? 0
+  cursorIndex.value = start
+  selectionRange.value = { start, end }
+
+  if (start !== end) {
+    const raw = el.value.substring(start, end)
+    selectedText.value = raw.trim()
+  } else {
+    selectedText.value = ''
+  }
+}
+
+// Tab & Enter key handling in editor
+const onKeyDown = (e) => {
+  const el = textareaRef.value || e.target
+  if (!el) return
+
+  // 1. Tab key: Indent / Outdent 2 spaces without jumping to buttons
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    const val = el.value
+
+    if (e.shiftKey) {
+      // Shift+Tab: Outdent 2 spaces
+      if (start === end) {
+        const lineStart = val.lastIndexOf('\n', start - 1) + 1
+        const linePrefix = val.substring(lineStart, lineStart + 2)
+        let removeCount = 0
+        if (linePrefix === '  ') removeCount = 2
+        else if (linePrefix.startsWith(' ')) removeCount = 1
+
+        if (removeCount > 0) {
+          const newVal = val.substring(0, lineStart) + val.substring(lineStart + removeCount)
+          setJsonInput(newVal)
+          nextTick(() => {
+            el.selectionStart = el.selectionEnd = Math.max(lineStart, start - removeCount)
+            updateSelection({ target: el })
+          })
+        }
+      } else {
+        const lineStart = val.lastIndexOf('\n', start - 1) + 1
+        const lineEnd = val.indexOf('\n', end)
+        const effectiveEnd = lineEnd === -1 ? val.length : lineEnd
+        const block = val.substring(lineStart, effectiveEnd)
+        const lines = block.split('\n')
+        let totalRemoved = 0
+        let firstLineRemoved = 0
+
+        const newLines = lines.map((line, idx) => {
+          let rem = 0
+          if (line.startsWith('  ')) rem = 2
+          else if (line.startsWith(' ')) rem = 1
+          if (idx === 0) firstLineRemoved = rem
+          totalRemoved += rem
+          return line.substring(rem)
+        })
+
+        const newVal = val.substring(0, lineStart) + newLines.join('\n') + val.substring(effectiveEnd)
+        setJsonInput(newVal)
+        nextTick(() => {
+          el.selectionStart = Math.max(lineStart, start - firstLineRemoved)
+          el.selectionEnd = Math.max(lineStart, end - totalRemoved)
+          updateSelection({ target: el })
+        })
+      }
+    } else {
+      // Tab: Indent 2 spaces
+      if (start === end) {
+        const newVal = val.substring(0, start) + '  ' + val.substring(end)
+        setJsonInput(newVal)
+        nextTick(() => {
+          el.selectionStart = el.selectionEnd = start + 2
+          updateSelection({ target: el })
+        })
+      } else {
+        const lineStart = val.lastIndexOf('\n', start - 1) + 1
+        const lineEnd = val.indexOf('\n', end)
+        const effectiveEnd = lineEnd === -1 ? val.length : lineEnd
+        const block = val.substring(lineStart, effectiveEnd)
+        const lines = block.split('\n')
+        const newLines = lines.map(line => '  ' + line)
+        const added = lines.length * 2
+
+        const newVal = val.substring(0, lineStart) + newLines.join('\n') + val.substring(effectiveEnd)
+        setJsonInput(newVal)
+        nextTick(() => {
+          el.selectionStart = start + 2
+          el.selectionEnd = end + added
+          updateSelection({ target: el })
+        })
+      }
+    }
+    return
+  }
+
+  // 2. Enter key: Auto-indent to current line level, expanding brackets cleanly
+  if (e.key === 'Enter') {
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    const val = el.value
+
+    if (start === end) {
+      const lineStart = val.lastIndexOf('\n', start - 1) + 1
+      const currentLine = val.substring(lineStart, start)
+      const matchIndent = currentLine.match(/^[ \t]*/)
+      const indent = matchIndent ? matchIndent[0] : ''
+
+      const trimmedBefore = currentLine.trimEnd()
+      const extra = (trimmedBefore.endsWith('{') || trimmedBefore.endsWith('[')) ? '  ' : ''
+      const nextChar = val.charAt(start)
+
+      if (extra && (nextChar === '}' || nextChar === ']')) {
+        e.preventDefault()
+        const insert = '\n' + indent + extra + '\n' + indent
+        const newVal = val.substring(0, start) + insert + val.substring(start)
+        setJsonInput(newVal)
+        nextTick(() => {
+          el.selectionStart = el.selectionEnd = start + 1 + indent.length + extra.length
+          updateSelection({ target: el })
+        })
+        return
+      }
+
+      if (indent.length > 0 || extra.length > 0) {
+        e.preventDefault()
+        const insert = '\n' + indent + extra
+        const newVal = val.substring(0, start) + insert + val.substring(start)
+        setJsonInput(newVal)
+        nextTick(() => {
+          el.selectionStart = el.selectionEnd = start + insert.length
+          updateSelection({ target: el })
+        })
+        return
+      }
+    }
   }
 }
 
@@ -38,7 +190,6 @@ const onPaste = (e) => {
   }
   e.preventDefault()
   setJsonInput(formatted)
-  // Auto-save to history on successful paste
   saveToCache()
   showToast('✓ JSON auto-formatted & cached')
 }
@@ -53,73 +204,188 @@ const onMinify = () => {
   minifyJson()
 }
 
-const onReset = () => resetJson()
-
-const onSaveToCache = () => {
-  if (!state.parsedData) return showToast('No valid JSON to save')
-  saveToCache()
-  showToast('✓ Saved to history')
+const onReset = () => {
+  resetJson()
+  selectedText.value = ''
 }
 
-const onLoadCacheEntry = (id) => {
-  loadFromCache(id)
-  showCacheDropdown.value = false
-  showToast('✓ Loaded from history')
+// ─── Left & Right Bracket Matching ──────────────────────────────────────────
+function findBracketMatch(text, pos) {
+  if (!text) return null
+  let targetIdx = -1
+  let char = ''
+  if (pos < text.length && '{}[()]'.includes(text[pos])) {
+    targetIdx = pos
+    char = text[pos]
+  } else if (pos > 0 && '{}[()]'.includes(text[pos - 1])) {
+    targetIdx = pos - 1
+    char = text[pos - 1]
+  }
+  if (targetIdx === -1) return null
+
+  const pairs = {
+    '{': { close: '}', dir: 1 },
+    '[': { close: ']', dir: 1 },
+    '(': { close: ')', dir: 1 },
+    '}': { close: '{', dir: -1 },
+    ']': { close: '[', dir: -1 },
+    ')': { close: '(', dir: -1 },
+  }
+  const info = pairs[char]
+  if (!info) return null
+
+  let depth = 0
+  let inStr = false
+  let esc = false
+  const dir = info.dir
+  const targetChar = info.close
+
+  let i = targetIdx
+  while (dir === 1 ? i < text.length : i >= 0) {
+    const c = text[i]
+    if (c === '"' && !esc) inStr = !inStr
+    esc = (c === '\\' && !esc)
+
+    if (!inStr) {
+      if (c === char) depth++
+      else if (c === targetChar) {
+        depth--
+        if (depth === 0) {
+          return { left: Math.min(targetIdx, i), right: Math.max(targetIdx, i) }
+        }
+      }
+    }
+    i += dir
+  }
+  return null
 }
 
-const onRemoveCacheEntry = (id) => {
-  removeFromCache(id)
+// ─── Case-Matched Recurring Occurrence Finder ───────────────────────────────
+// When user selects a key/value (e.g. "E"), also matches left/right paired things (e.g. "/E")
+function findOccurrences(text, selText, selStart, selEnd) {
+  if (!text || !selText) return []
+  const q = selText.trim()
+  if (!q) return []
+
+  const cleanQ = q.replace(/^["']|["']$/g, '')
+  if (!cleanQ) return []
+
+  // Gather matching variants:
+  // e.g. "E" -> matches "E" and "/E"; "/E" -> matches "/E" and "E"
+  const variants = new Set([cleanQ])
+  if (cleanQ.startsWith('/')) {
+    const stripped = cleanQ.slice(1)
+    if (stripped) variants.add(stripped)
+  } else {
+    variants.add('/' + cleanQ)
+  }
+
+  const occurrences = []
+  const sorted = Array.from(variants).sort((a, b) => b.length - a.length)
+
+  for (const v of sorted) {
+    let idx = 0
+    while ((idx = text.indexOf(v, idx)) !== -1) {
+      const end = idx + v.length
+      const overlaps = occurrences.some(o => !(end <= o.start || idx >= o.end))
+      if (!overlaps) {
+        occurrences.push({
+          start: idx,
+          end,
+          isActive: idx === selStart && end === selEnd,
+        })
+      }
+      idx++
+    }
+  }
+
+  return occurrences.sort((a, b) => a.start - b.start)
 }
 
-const timeAgo = (ts) => {
-  const diff = Date.now() - ts
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
-// ─── Lightweight JSON syntax highlighter ──────────────────────────────────────
-const highlighted = computed(() => {
-  const text = state.jsonInputText
-  if (!text) return ''
-
-  const escaped = text
+const escapeHtml = (str) =>
+  str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  return escaped.replace(
-    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"\r\n])*"(?:\s*:)?|true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
-    (match) => {
-      if (match.startsWith('"')) {
-        return match.endsWith(':')
-          ? `<span class="hl-key">${match}</span>`
-          : `<span class="hl-str">${match}</span>`
+// ─── Robust Tokenizer & Highlighter ──────────────────────────────────────────
+const highlighted = computed(() => {
+  const text = state.jsonInputText
+  if (!text) return ''
+
+  const bracketMatch = findBracketMatch(text, cursorIndex.value)
+  const occurrences = (selectedText.value && selectedText.value.length >= 1)
+    ? findOccurrences(text, selectedText.value, selectionRange.value.start, selectionRange.value.end)
+    : []
+
+  const renderSnippet = (str, strStart) => {
+    if (occurrences.length === 0) return escapeHtml(str)
+
+    let out = ''
+    let cur = 0
+    const strEnd = strStart + str.length
+
+    for (const occ of occurrences) {
+      if (occ.end <= strStart || occ.start >= strEnd) continue
+
+      const matchStartInStr = Math.max(0, occ.start - strStart)
+      const matchEndInStr = Math.min(str.length, occ.end - strStart)
+
+      if (matchStartInStr > cur) {
+        out += escapeHtml(str.substring(cur, matchStartInStr))
       }
-      if (match === 'true' || match === 'false') return `<span class="hl-bool">${match}</span>`
-      if (match === 'null') return `<span class="hl-null">${match}</span>`
-      return `<span class="hl-num">${match}</span>`
+
+      const matchText = str.substring(matchStartInStr, matchEndInStr)
+      out += `<mark class="hl-occurrence${occ.isActive ? ' active' : ''}">${escapeHtml(matchText)}</mark>`
+      cur = matchEndInStr
     }
-  )
+
+    if (cur < str.length) {
+      out += escapeHtml(str.substring(cur))
+    }
+    return out
+  }
+
+  const tokenRegex = /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"\r\n])*"(?:\s*:)?|true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\]]|[:,]|\s+|[^\s"{}[\]:,]+)/g
+
+  let match
+  let html = ''
+
+  while ((match = tokenRegex.exec(text)) !== null) {
+    const raw = match[0]
+    const start = match.index
+
+    if (raw.startsWith('"')) {
+      if (raw.endsWith(':')) {
+        html += `<span class="hl-key">${renderSnippet(raw, start)}</span>`
+      } else {
+        html += `<span class="hl-str">${renderSnippet(raw, start)}</span>`
+      }
+    } else if (raw === 'true' || raw === 'false') {
+      html += `<span class="hl-bool">${renderSnippet(raw, start)}</span>`
+    } else if (raw === 'null') {
+      html += `<span class="hl-null">${renderSnippet(raw, start)}</span>`
+    } else if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) {
+      html += `<span class="hl-num">${renderSnippet(raw, start)}</span>`
+    } else if ('{}[()]'.includes(raw) && raw.length === 1) {
+      const isMatched = bracketMatch && (start === bracketMatch.left || start === bracketMatch.right)
+      html += `<span class="hl-bracket${isMatched ? ' hl-bracket-match' : ''}">${renderSnippet(raw, start)}</span>`
+    } else if (raw === ':' || raw === ',') {
+      html += `<span class="hl-punct">${escapeHtml(raw)}</span>`
+    } else {
+      html += renderSnippet(raw, start)
+    }
+  }
+
+  return html
 })
 
 // On mount: restore last session's JSON, or fall back to sample
 onMounted(() => {
   if (!state.jsonInputText) {
     const restored = restoreLastInput()
-    if (!restored) {
-      const SAMPLE = {
-        totalItems: 2,
-        member: [
-          { id: '101', type: 'VPMInstance', attributes: { name: 'High-Pressure Turbine', unitOfMeasure: 'EA' } },
-          { id: '102', type: 'VPMInstance', attributes: { name: 'Centrifugal Pump', unitOfMeasure: 'EA' } },
-        ],
-      }
-      setJsonInput(JSON.stringify(SAMPLE, null, 2))
+    if (!restored || state.jsonInputText.includes('High-Pressure Turbine')) {
+      setJsonInput(DEFAULT_SAMPLE_JSON_STRING)
     }
   }
 })
@@ -147,10 +413,16 @@ onMounted(() => {
       ></pre>
 
       <textarea
+        ref="textareaRef"
         :value="state.jsonInputText"
         @input="onInput"
         @paste="onPaste"
         @scroll="onScroll"
+        @keydown="onKeyDown"
+        @select="updateSelection"
+        @keyup="updateSelection"
+        @mouseup="updateSelection"
+        @click="updateSelection"
         class="json-textarea"
         spellcheck="false"
         autocorrect="off"
@@ -239,6 +511,10 @@ onMounted(() => {
   margin: 0;
   border: none;
   outline: none;
+  letter-spacing: 0px;
+  font-variant-ligatures: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .hl-pre {
@@ -246,8 +522,9 @@ onMounted(() => {
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  user-select: none;
   background: var(--bg);
-  color: #5c6370;
+  color: #abb2bf;
   z-index: 0;
   height: 100%;
 }
@@ -258,10 +535,22 @@ onMounted(() => {
   resize: none;
   background: transparent;
   color: transparent;
-  caret-color: #abb2bf;
-  user-select: text;
+  caret-color: #58a6ff;
+  user-select: text !important;
+  -webkit-user-select: text !important;
   height: 100%;
   overflow: auto;
+}
+
+/* Translucent selection so colored syntax underneath is 100% visible */
+.json-textarea::selection {
+  background: rgba(88, 166, 255, 0.35) !important;
+  color: transparent !important;
+}
+
+.json-textarea::-moz-selection {
+  background: rgba(88, 166, 255, 0.35) !important;
+  color: transparent !important;
 }
 
 .json-textarea::placeholder {
@@ -269,34 +558,38 @@ onMounted(() => {
   opacity: 1;
 }
 
-:deep(.hl-key)  { color: #e06c75; }
-:deep(.hl-str)  { color: #98c379; }
-:deep(.hl-num)  { color: #d19a66; }
-:deep(.hl-bool) { color: #56b6c2; }
-:deep(.hl-null) { color: #56b6c2; font-style: italic; }
+/* Syntax colors */
+:deep(.hl-key)     { color: #e06c75; font-weight: 600; }
+:deep(.hl-str)     { color: #98c379; }
+:deep(.hl-num)     { color: #d19a66; }
+:deep(.hl-bool)    { color: #56b6c2; font-weight: 600; }
+:deep(.hl-null)    { color: #e5c07b; font-style: italic; }
+:deep(.hl-bracket) { color: #abb2bf; }
+:deep(.hl-punct)   { color: #5c6370; }
 
-/* ─── Cache / History ──────────────────────────────────────────────────────── */
-.cache-dropdown-wrap {
-  position: relative;
-}
-
-.btn-cache {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.btn-cache.active { border-color: var(--accent); color: var(--accent); }
-
-.cache-count {
-  background: var(--accent);
-  color: var(--bg);
-  font-size: 9px;
+/* Left & Right Bracket Matching */
+:deep(.hl-bracket-match) {
+  color: #fff !important;
+  background: rgba(88, 166, 255, 0.35);
+  outline: 1px solid #58a6ff;
+  border-radius: 2px;
   font-weight: 700;
-  border-radius: 8px;
-  padding: 0 5px;
-  min-width: 14px;
-  text-align: center;
-  line-height: 14px;
+  box-shadow: 0 0 5px rgba(88, 166, 255, 0.5);
+}
+
+/* Recurring Occurrence Highlight (case-matched) */
+:deep(.hl-occurrence) {
+  background: rgba(229, 192, 123, 0.28);
+  outline: 1px solid rgba(229, 192, 123, 0.65);
+  border-radius: 2px;
+  color: inherit;
+  box-shadow: 0 0 4px rgba(229, 192, 123, 0.3);
+}
+
+:deep(.hl-occurrence.active) {
+  background: rgba(88, 166, 255, 0.35);
+  outline: 1px solid #58a6ff;
+  box-shadow: 0 0 6px rgba(88, 166, 255, 0.4);
 }
 
 

@@ -1,5 +1,6 @@
 import { reactive, watch } from 'vue';
 import { godJsonParse } from '../utils/godJsonParse';
+import { DEFAULT_SAMPLE_JSON_STRING } from '../utils/defaultSampleJson';
 
 const CONFIG_KEY = 'json_workbench_settings_v4';
 const LAYOUT_KEY = 'json_workbench_layout_v4';
@@ -222,9 +223,14 @@ export function useWorkbench() {
     state.inputPanelVisible = !state.inputPanelVisible;
   };
 
+  const loadDefaultJson = () => {
+    setJsonInput(DEFAULT_SAMPLE_JSON_STRING);
+  };
+
   return {
     state,
     setJsonInput,
+    loadDefaultJson,
     formatJson,
     minifyJson,
     resetJson,
