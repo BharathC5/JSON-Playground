@@ -16,6 +16,7 @@ const defaultSettings = {
   splitPosition: 'left', // 'left' | 'bottom' | 'right'
   showDockInToolbar: false, // show Left/Bottom/Right dock buttons in the top bar
   persistCache: true,   // persist last JSON + history across reloads
+  loadSampleJson: true, // load starter template when empty
 };
 
 // ─── Global State Singleton ───────────────────────────────────────────────────
@@ -31,6 +32,7 @@ const state = reactive({
   consoleInputDraft: '',
   inputPanelVisible: true,  // toggle hide/show JSON input
   jsonCache: [],            // [{ id, label, text, preview, timestamp }]
+  isSampleTemplate: false,  // tracks whether active editor content is the starter template
 });
 
 // Load persisted settings
@@ -101,11 +103,16 @@ function makeLabel(text) {
 // ─── Composable ───────────────────────────────────────────────────────────────
 export function useWorkbench() {
 
-  const setJsonInput = (text) => {
+  const setJsonInput = (text, isTemplate = false) => {
     state.jsonInputText = text;
+    state.isSampleTemplate = isTemplate;
     // Persist last input for restore-on-reload (only if cache enabled)
     if (state.settings.persistCache) {
-      try { localStorage.setItem(LAST_KEY, text); } catch (e) {}
+      if (isTemplate) {
+        try { localStorage.removeItem(LAST_KEY); } catch (e) {}
+      } else {
+        try { localStorage.setItem(LAST_KEY, text); } catch (e) {}
+      }
     }
 
     if (!text.trim()) {
@@ -176,6 +183,7 @@ export function useWorkbench() {
 
   const resetJson = () => {
     state.jsonInputText = '';
+    state.isSampleTemplate = false;
     state.parsedData = null;
     state.jsonError = null;
     state.jsonParseResult = null;
@@ -188,7 +196,11 @@ export function useWorkbench() {
     try {
       const last = localStorage.getItem(LAST_KEY);
       if (last && last.trim()) {
-        setJsonInput(last);
+        if (state.settings.loadSampleJson === false && (last.includes('ORG-2026-001') || last.includes('High-Pressure Turbine'))) {
+          try { localStorage.removeItem(LAST_KEY); } catch (e) {}
+          return false;
+        }
+        setJsonInput(last, false);
         return true;
       }
     } catch (e) {}
@@ -224,7 +236,7 @@ export function useWorkbench() {
   };
 
   const loadDefaultJson = () => {
-    setJsonInput(DEFAULT_SAMPLE_JSON_STRING);
+    setJsonInput(DEFAULT_SAMPLE_JSON_STRING, true);
   };
 
   return {

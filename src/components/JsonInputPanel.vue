@@ -3,6 +3,7 @@ import { useWorkbench } from '../composables/useWorkbench'
 import { showToast } from '../composables/useToast'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { DEFAULT_SAMPLE_JSON_STRING } from '../utils/defaultSampleJson'
+import { godJsonParse } from '../utils/godJsonParse'
 
 const {
   state, setJsonInput, formatJson, minifyJson, resetJson,
@@ -175,23 +176,61 @@ const onKeyDown = (e) => {
   }
 }
 
+// Helper: check if editor currently contains the starter sample template
+function isCurrentContentTemplate() {
+  if (state.isSampleTemplate) return true
+  const txt = (state.jsonInputText || '').trim()
+  if (!txt) return false
+  if (txt === DEFAULT_SAMPLE_JSON_STRING.trim()) return true
+  if (txt.includes('ORG-2026-001') && txt.includes('Global Engineering Systems')) return true
+  if (txt.includes('High-Pressure Turbine')) return true
+  return false
+}
+
 // Auto-format pasted JSON and auto-save to cache
 const onPaste = (e) => {
   const raw = e.clipboardData?.getData('text')
   if (!raw) return
-  let formatted
+
+  const isTemplate = isCurrentContentTemplate()
+
+  const cleaned = raw
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u00A0\u200B]/g, ' ')
+
+  let formatted = null
   try {
-    const cleaned = raw
-      .replace(/^\uFEFF/, '')
-      .replace(/[\u00A0\u200B]/g, ' ')
     formatted = JSON.stringify(JSON.parse(cleaned), null, 2)
   } catch {
+    const res = godJsonParse(cleaned)
+    if (res.ok && res.data !== undefined) {
+      formatted = JSON.stringify(res.data, null, 2)
+    }
+  }
+
+  const toSet = formatted || cleaned
+
+  // When pasting over the sample template, wipe the template and fill with pasted JSON
+  if (isTemplate) {
+    e.preventDefault()
+    setJsonInput(toSet, false)
+    saveToCache()
+    showToast(formatted ? '✓ Template replaced & auto-formatted' : '✓ Template replaced with pasted JSON')
     return
   }
-  e.preventDefault()
-  setJsonInput(formatted)
-  saveToCache()
-  showToast('✓ JSON auto-formatted & cached')
+
+  // If not template: if whole editor is selected or editor is empty, replace all
+  const el = textareaRef.value
+  const isAllSelected = el && el.selectionStart === 0 && el.selectionEnd === el.value.length
+  const isEmpty = !state.jsonInputText || !state.jsonInputText.trim()
+
+  if (formatted && (isAllSelected || isEmpty)) {
+    e.preventDefault()
+    setJsonInput(formatted, false)
+    saveToCache()
+    showToast('✓ JSON auto-formatted & cached')
+    return
+  }
 }
 
 const onFormat = () => {
@@ -380,12 +419,20 @@ const highlighted = computed(() => {
   return html
 })
 
-// On mount: restore last session's JSON, or fall back to sample
+// On mount: restore last session's JSON, or fall back to sample if enabled
 onMounted(() => {
   if (!state.jsonInputText) {
     const restored = restoreLastInput()
-    if (!restored || state.jsonInputText.includes('High-Pressure Turbine')) {
-      setJsonInput(DEFAULT_SAMPLE_JSON_STRING)
+    if (!restored) {
+      if (state.settings.loadSampleJson !== false) {
+        setJsonInput(DEFAULT_SAMPLE_JSON_STRING, true)
+      }
+    } else if (state.jsonInputText.includes('High-Pressure Turbine')) {
+      if (state.settings.loadSampleJson !== false) {
+        setJsonInput(DEFAULT_SAMPLE_JSON_STRING, true)
+      } else {
+        resetJson()
+      }
     }
   }
 })

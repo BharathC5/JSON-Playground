@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useWorkbench } from '../composables/useWorkbench'
 import { showToast } from '../composables/useToast'
 
-const { state, resetLayout, wipePersistedData, clearCache } = useWorkbench()
+const { state, resetLayout, wipePersistedData, clearCache, resetJson } = useWorkbench()
 const emit = defineEmits(['close', 'reset-layout'])
 
 // Work on a local copy so user can Cancel
@@ -11,11 +11,21 @@ const local = ref({
   ...state.settings,
   layoutMode: state.settings.layoutMode ?? 'split',
   splitPosition: state.settings.splitPosition ?? 'left',
+  loadSampleJson: state.settings.loadSampleJson ?? true,
 })
 
 const save = () => {
   const wasCacheOn = state.settings.persistCache;
+  const wasSampleOn = state.settings.loadSampleJson ?? true;
   Object.assign(state.settings, local.value)
+
+  // If user disabled Load Sample JSON and the template is currently in the editor, clear it
+  if (wasSampleOn && !local.value.loadSampleJson) {
+    if (state.isSampleTemplate || state.jsonInputText.includes('"ORG-2026-001"')) {
+      resetJson();
+    }
+  }
+
   // If user just turned cache OFF, wipe all persisted JSON data
   if (wasCacheOn && !local.value.persistCache) {
     wipePersistedData();
@@ -187,6 +197,12 @@ const onResetLayout = () => {
             <input type="checkbox" v-model="local.persistCache" />
             Remember JSON across sessions
             <span class="help-chip">Restores last pasted JSON on reload</span>
+          </label>
+
+          <label class="setting-checkbox-label">
+            <input type="checkbox" v-model="local.loadSampleJson" />
+            Load sample template when empty
+            <span class="help-chip">Pre-fills starter template if no saved JSON exists</span>
           </label>
 
           <div class="cache-info" v-if="state.jsonCache.length">
